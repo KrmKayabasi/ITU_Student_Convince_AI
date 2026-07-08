@@ -8,6 +8,14 @@ ayırt edemiyordu. Burada iki bileşen çarpılır:
   2) head_alignment: baş yaw/pitch arttıkça yumuşak biçimde düşer.
 Ayrıca bir eşik üstünde (gating) baş dönüklüğü, göz ortada olsa dahi
 eye_contact'ı ek bir ceza çarpanıyla bastırır.
+
+Göz kırpma sırasında kapanan göz kapağı iris takibini bozar (ör. eyeLookDown
+sahte biçimde yükselir); bu da normalde eyeLookIn/Out/Up/Down ortalamasını
+gercek bir bakis sapmasi gibi gösterip eye_contact'i haksiz yere düşürür. Bu
+yüzden eyeBlinkLeft/Right skoru (blink), deviation cezasini orantili olarak
+yumusatir — tam kirpma (blink=1) cezayi tamamen kaldirir, yari kapali gecis
+kareleri de (blink=0.3-0.7) kismen korunur. Kirpma anlik bir dikkat kaybi
+degildir.
 """
 
 from __future__ import annotations
@@ -28,6 +36,7 @@ _EYE_LOOK_KEYS = (
     "eyeLookDownLeft",
     "eyeLookDownRight",
 )
+_EYE_BLINK_KEYS = ("eyeBlinkLeft", "eyeBlinkRight")
 
 
 @dataclass
@@ -43,8 +52,13 @@ def _clip01(x: float) -> float:
 
 
 def compute_eye_contact(blendshapes: Dict[str, float], head_pose: HeadPose) -> GazeResult:
+    blink = _clip01(sum(blendshapes.get(k, 0.0) for k in _EYE_BLINK_KEYS) / len(_EYE_BLINK_KEYS))
     deviation = sum(blendshapes.get(k, 0.0) for k in _EYE_LOOK_KEYS) / len(_EYE_LOOK_KEYS)
-    eye_centeredness = _clip01(1.0 - deviation / config.GAZE_EYE_DEVIATION_SCALE)
+    deviation_centeredness = _clip01(1.0 - deviation / config.GAZE_EYE_DEVIATION_SCALE)
+    # Kirpma yari kapali/gecis karelerinde de eyeLook* sapmasini bozar; sert
+    # bir esik yerine blink skoruyla orantili yumusatma yapariz (blink=1 ->
+    # ceza tamamen kalkar, blink=0 -> normal deviation cezasi).
+    eye_centeredness = deviation_centeredness + (1.0 - deviation_centeredness) * blink
 
     max_deg = config.GAZE_HEAD_ALIGNMENT_MAX_DEG
     yaw_alignment = _clip01(1.0 - abs(head_pose.yaw_deg) / max_deg)

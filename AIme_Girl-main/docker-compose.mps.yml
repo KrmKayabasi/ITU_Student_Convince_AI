@@ -1,0 +1,52 @@
+# Apple Silicon (MPS) override.
+#
+# docker-compose.yml'deki stt/tts/llm servisleri NVIDIA GPU rezervasyonu
+# istiyor (deploy.resources.reservations.devices: driver: nvidia); Docker
+# Desktop for Mac'te GPU/Metal passthrough olmadigi icin bu servisler bu
+# platformda hicbir sekilde container icinde baslatilamaz.
+#
+# Bunun yerine STT/TTS/LLM, dockerless/start_stt_mps.sh, start_tts_mps.sh ve
+# start_llm_mps.sh ile HOST'ta native olarak (mlx-whisper / sherpa-onnx
+# coreml / mlx-lm, Metal uzerinden) calisir; bu dosya yalnizca backend
+# container'ini o host servislerine host.docker.internal uzerinden baglar.
+#
+# traefik da devre disi: bu Mac'teki Docker Desktop surumunun (Engine API
+# 1.54) docker socket'i, traefik v3.3.1'in gomulu docker istemcisiyle
+# uyumsuz ("Error response from daemon: " bos hatasiyla docker provider hic
+# calismiyor, DOCKER_API_VERSION pinlemek de cozmedi). Bunun yerine frontend
+# zaten kendi kodunda destekledigi "dockerless" moda alinir
+# (NEXT_PUBLIC_IN_DOCKER=false => frontend/src/app/useBackendServerUrl.ts
+# backend'i ayni host'ta NEXT_PUBLIC_BACKEND_PORT portundan arar), backend
+# :80 -> host :8001'e publish edilir (host'taki :8000 baska bir projenin
+# cv-pipeline-server container'i tarafindan kullanildigi icin :8001 secildi),
+# frontend :3000 -> host :3000'e publish edilir. Tarayicidan
+# http://localhost:3000 acilir.
+#
+# Kullanim:
+#   1) 3 ayri terminalde:
+#        ./dockerless/start_stt_mps.sh
+#        ./dockerless/start_tts_mps.sh
+#        ./dockerless/start_llm_mps.sh
+#   2) traefik'i compose komutuna DAHIL ETMEDEN:
+#        docker compose -f docker-compose.yml -f docker-compose.mps.yml \
+#          up --build frontend backend
+#   3) Tarayicida http://localhost:3000
+services:
+  backend:
+    environment:
+      - KYUTAI_STT_URL=ws://host.docker.internal:8090
+      - KYUTAI_TTS_URL=ws://host.docker.internal:8089
+      - KYUTAI_LLM_URL=http://host.docker.internal:8091
+      - KYUTAI_LLM_MODEL=${KYUTAI_LLM_MODEL:-mlx-community/gemma-3-1b-it-4bit}
+      - UNMUTE_DEFAULT_LANGUAGE=${UNMUTE_DEFAULT_LANGUAGE:-tr}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8001:80"
+
+  frontend:
+    environment:
+      - NEXT_PUBLIC_IN_DOCKER=false
+      - NEXT_PUBLIC_BACKEND_PORT=8001
+    ports:
+      - "3000:3000"

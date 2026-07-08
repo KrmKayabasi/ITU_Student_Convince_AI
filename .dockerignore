@@ -8,3 +8,7 @@ __pycache__/
 .git/
 tests/
 docs/
+# AIme_Girl'un kendi build context'leri var (./AIme_Girl-main ve
+# ./AIme_Girl-main/frontend); cv-pipeline image'ina girmesine gerek yok.
+AIme_Girl-main/
+.venv-camera/

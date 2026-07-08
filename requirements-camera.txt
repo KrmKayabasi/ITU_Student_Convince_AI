@@ -1,0 +1,4 @@
+opencv-python==5.0.0.93
+websockets==16.0
+PyQt6==6.11.0
+PyQt6-WebEngine==6.11.0

@@ -69,7 +69,13 @@ def crop_from_bbox(
     padding_ratio: Optional[float] = None,
 ) -> Optional[np.ndarray]:
     """Normalize (xmin,ymin,xmax,ymax) bbox'tan, etrafina dolgu eklenmis
-    piksel kirpimi doner. Kirpim bossa None doner."""
+    KARE piksel kirpimi doner. Kirpim bossa None doner.
+
+    Duygu modeli 224x224 kare girdi bekler; yuz bbox'i dikdortgen kaldiginda
+    resize sirasinda goruntu yatay/dikey gerilip siniflandirmayi bozar. Kisa
+    kenar, merkez korunarak uzun kenara esitlenir; kare kare bulunmasi
+    gereken alan kadranin disina tasarsa kenar piksel tekrariyla doldurulur.
+    """
     if padding_ratio is None:
         padding_ratio = config.FACE_CROP_PADDING_RATIO
     h, w = frame.shape[:2]
@@ -80,13 +86,28 @@ def crop_from_bbox(
     ymin -= box_h * padding_ratio
     ymax += box_h * padding_ratio
 
-    x0 = max(0, int(xmin * w))
-    y0 = max(0, int(ymin * h))
-    x1 = min(w, int(xmax * w))
-    y1 = min(h, int(ymax * h))
+    x0, y0 = xmin * w, ymin * h
+    x1, y1 = xmax * w, ymax * h
+    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+    side = max(x1 - x0, y1 - y0)
+    x0, x1 = int(round(cx - side / 2)), int(round(cx + side / 2))
+    y0, y1 = int(round(cy - side / 2)), int(round(cy + side / 2))
     if x1 <= x0 or y1 <= y0:
         return None
-    return frame[y0:y1, x0:x1]
+
+    pad_left, pad_top = max(0, -x0), max(0, -y0)
+    pad_right, pad_bottom = max(0, x1 - w), max(0, y1 - h)
+    x0c, y0c = max(0, x0), max(0, y0)
+    x1c, y1c = min(w, x1), min(h, y1)
+    if x1c <= x0c or y1c <= y0c:
+        return None
+    crop = frame[y0c:y1c, x0c:x1c]
+
+    if pad_left or pad_top or pad_right or pad_bottom:
+        crop = cv2.copyMakeBorder(
+            crop, pad_top, pad_bottom, pad_left, pad_right, cv2.BORDER_REPLICATE
+        )
+    return crop
 
 
 class SignalExtractor:

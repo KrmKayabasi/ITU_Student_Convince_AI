@@ -1,0 +1,78 @@
+# Birlesik stack: goruntu isleme (cv-pipeline) + AIme_Girl (Unmute sesli AI).
+#
+# Tek komutla ayaga kaldirir:
+#   docker compose up --build
+#
+# ┌──────────────────────────────────────────────────────────────────────────┐
+# │ ONEMLI - Apple Silicon (Mac) notu:                                        │
+# │ AIme_Girl'un STT/TTS/LLM servisleri Metal/MPS (Apple GPU) gerektirir ve    │
+# │ Docker Desktop for Mac konteynerlere GPU passthrough VERMEDIGI icin bu     │
+# │ compose'a DAHIL EDILEMEZ. Onlar host'ta native calisir. Sesli AI'in uctan  │
+# │ uca calismasi icin, bu compose'u baslatmadan ONCE 3 ayri terminalde:       │
+# │     cd AIme_Girl-main && ./dockerless/start_stt_mps.sh                      │
+# │     cd AIme_Girl-main && ./dockerless/start_tts_mps.sh                      │
+# │     cd AIme_Girl-main && ./dockerless/start_llm_mps.sh                      │
+# │ Sadece goruntu islemeyi (cv-pipeline) istiyorsaniz onlara gerek yok.       │
+# └──────────────────────────────────────────────────────────────────────────┘
+#
+# Servisler ve portlar:
+#   cv-pipeline    -> http://localhost:8000  (goruntu isleme ingest/WS servisi)
+#   aime-backend   -> http://localhost:8001  (Unmute backend)
+#   aime-frontend  -> http://localhost:3000  (Unmute web arayuzu; tarayicidan bu)
+#
+# NOT: AIme_Girl'un kendi docker-compose.yml'indeki traefik bu Mac'in Docker
+# surumuyle uyumsuz oldugu icin burada kullanilmiyor; frontend "dockerless"
+# moda (NEXT_PUBLIC_IN_DOCKER=false) alinip backend'e dogrudan :8001'den baglanir.
+name: bbf-suite
+
+services:
+  # ── Goruntu isleme (BBF_Tanitim ana projesi) ──────────────────────────────
+  cv-pipeline:
+    image: cv-pipeline:latest
+    build:
+      context: ./
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  # ── AIme_Girl (Unmute) backend ────────────────────────────────────────────
+  aime-backend:
+    image: unmute-backend:latest
+    build:
+      context: ./AIme_Girl-main
+      dockerfile: Dockerfile
+      target: hot-reloading
+    volumes:
+      - ./AIme_Girl-main/unmute:/app/unmute
+    environment:
+      # STT/TTS/LLM host'ta native (Metal) calisir; container'dan host'a
+      # host.docker.internal uzerinden erisilir.
+      - KYUTAI_STT_URL=ws://host.docker.internal:8090
+      - KYUTAI_TTS_URL=ws://host.docker.internal:8089
+      - KYUTAI_LLM_URL=http://host.docker.internal:8091
+      - KYUTAI_LLM_MODEL=${KYUTAI_LLM_MODEL:-mlx-community/gemma-3-1b-it-4bit}
+      - UNMUTE_DEFAULT_LANGUAGE=${UNMUTE_DEFAULT_LANGUAGE:-tr}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8001:80"
+    restart: unless-stopped
+
+  # ── AIme_Girl (Unmute) frontend ───────────────────────────────────────────
+  aime-frontend:
+    image: unmute-frontend:latest
+    build:
+      context: ./AIme_Girl-main/frontend
+      dockerfile: hot-reloading.Dockerfile
+    volumes:
+      - ./AIme_Girl-main/frontend/src:/app/src
+    environment:
+      # traefik yok; backend'e ayni host'ta :8001'den dogrudan baglan.
+      - NEXT_PUBLIC_IN_DOCKER=false
+      - NEXT_PUBLIC_BACKEND_PORT=8001
+    ports:
+      - "3000:3000"
+    depends_on:
+      - aime-backend
+    restart: unless-stopped
