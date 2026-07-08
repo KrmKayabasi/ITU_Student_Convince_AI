@@ -21,7 +21,7 @@ def _str(name: str, default: str) -> str:
 
 
 # --- Model varlıkları --------------------------------------------------------
-MODELS_DIR = _str("MODELS_DIR", "/srv/models")
+MODELS_DIR = _str("MODELS_DIR", "models")
 FACE_MODEL_PATH = _str("FACE_MODEL_PATH", os.path.join(MODELS_DIR, "face_landmarker.task"))
 POSE_MODEL_PATH = _str("POSE_MODEL_PATH", os.path.join(MODELS_DIR, "pose_landmarker_full.task"))
 EMOTION_MODEL_PATH = _str(

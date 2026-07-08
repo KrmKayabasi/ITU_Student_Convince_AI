@@ -25,32 +25,47 @@ ITU_Student_Convince_AI/
 
 ---
 
-## ⚡ Quick Start
+## ⚡ End-to-End Startup Instructions
 
-### 1. Run the CV Scoring Backend
-The CV Backend processes camera frames to calculate engagement metrics (attention, posture energy, openness):
+Follow this step-by-step guide to launch all systems:
+
+### Step 1: Pre-requisites & Setup
+Ensure you have **Docker Desktop** installed and running on your machine.
+Then, install the unified python dependencies for the scoring backend and desktop client:
 ```bash
-# Create and activate virtual environment in the root
+# 1. Create a virtual environment at root
 uv venv
 source .venv/bin/activate
 
-# Install dependencies
-uv pip install -r requirements.txt
-
-# Run the FastAPI server
-uvicorn backend.cv_pipeline.main:app --reload --host 0.0.0.0 --port 8000
+# 2. Install all required dependencies (webcam, CV, models, PyQt6 GUI)
+uv pip install fastapi uvicorn "websockets>=13.1,<17.0" opencv-python opencv-python-headless numpy mediapipe onnxruntime PyQt6 PyQt6-WebEngine pytest
 ```
 
-### 2. Run the PyQt6 Desktop Client (with Integrated Service Manager)
-The desktop client opens your webcam, streams video to the CV backend, and embeds the interactive Voice Agent UI. It features a built-in manager to start/stop the entire voice backend container stack (LLM, STT, TTS, Backend, and Web interface) in the background via Docker Compose:
+### Step 2: Start the CV Ingestion Backend
+The FastAPI server processes video streams sent by the client. Run it inside the root directory:
 ```bash
-# Install desktop client requirements
-uv pip install -r requirements-camera.txt
-
-# Run the PyQt6 panel
-python client/desktop_client.py
+# Run the FastAPI server (make sure you activated the virtual environment)
+uv run uvicorn backend.cv_pipeline.main:app --reload --host 0.0.0.0 --port 8000
 ```
-*Click **"Start All Services"** inside the desktop client UI to automatically bootstrap the entire dockerized voice agent stack using `docker compose up -d` in the background.*
+*The server will start listening at `http://localhost:8000`. It will search for models automatically in the local `./models/` folder.*
+
+### Step 3: Run the PyQt6 Desktop Client
+Launch the PyQt6 webcam panel and control board:
+```bash
+uv run python client/desktop_client.py
+```
+*A window will open displaying:
+- **Left Panel**: Your webcam feed with live scoring overlay (Attention, Posture, and active Emotions).
+- **Right Panel**: The AI companion avatar interface.*
+
+### Step 4: Bootstrap the Conversational AI Stack
+Inside the PyQt6 Desktop Client UI, click the **"Start All Services"** button at the bottom of the left panel.
+This will:
+1. Automatically load your Hugging Face credentials (`~/.cache/huggingface/token`).
+2. Run `docker compose up -d` in the background to build and start the STT, TTS, LLM (Gemma 4 E2B), Voice Backend, and Frontend containers.
+3. Show the live container health indicators (`RUNNING` / `STARTING` / `STOPPED`) on the dashboard using dynamic status checks.
+
+*To stop everything when you're done, simply click **"Stop All Services"** or close the PyQt6 window (which automatically runs `docker compose down` inside the background).*
 
 ---
 
