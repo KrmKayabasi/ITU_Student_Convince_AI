@@ -185,16 +185,31 @@ def get_readable_llm_name():
     return model.replace("-", " ").replace("_", " ")
 
 
+def load_itu_prompt() -> str:
+    path = Path(__file__).resolve().parents[3] / "SYSTEM_PROMPT.md"
+    if path.exists():
+        return path.read_text(encoding="utf-8")
+    for p in [Path("SYSTEM_PROMPT.md"), Path("../SYSTEM_PROMPT.md"), Path("../../SYSTEM_PROMPT.md"), Path("../../../SYSTEM_PROMPT.md")]:
+        if p.exists():
+            return p.read_text(encoding="utf-8")
+    return ""
+
+
 class ConstantInstructions(BaseModel):
     type: Literal["constant"] = "constant"
     text: str = _DEFAULT_ADDITIONAL_INSTRUCTIONS
     language: LanguageCode | None = None
 
     def make_system_prompt(self) -> str:
+        instructions = self.text
+        if self.language == "tr":
+            itu_prompt = load_itu_prompt()
+            if itu_prompt:
+                instructions = itu_prompt
         return _format_system_prompt(
             language=self.language,
             language_instructions=LANGUAGE_CODE_TO_INSTRUCTIONS[self.language],
-            additional_instructions=self.text,
+            additional_instructions=instructions,
             llm_name=get_readable_llm_name(),
         )
 
@@ -275,6 +290,9 @@ class SmalltalkInstructions(BaseModel):
         additional_instructions: str = _DEFAULT_ADDITIONAL_INSTRUCTIONS,
     ) -> str:
         if self.language == "tr":
+            itu_prompt = load_itu_prompt()
+            if itu_prompt:
+                additional_instructions = itu_prompt
             smalltalk_block = SMALLTALK_INSTRUCTIONS_TR.format(
                 additional_instructions=additional_instructions,
                 current_time=datetime.datetime.now().strftime("%A, %B %d, %Y at %H:%M"),
