@@ -1,0 +1,19 @@
+++ dirname ./dockerless/start_backend.sh
++ cd ./dockerless/..
++ uv run python -m uvicorn unmute.main_websocket:app --reload --host 0.0.0.0 --port 8000 --ws-per-message-deflate=false
+INFO:     Will watch for changes in these directories: ['/Users/baydogan/Documents/ComputerScience/Projects/ITU_Student_Convince_AI/AIme_Girl-main']
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [79468] using WatchFiles
+/Users/baydogan/Documents/ComputerScience/Projects/ITU_Student_Convince_AI/AIme_Girl-main/.venv/lib/python3.12/site-packages/pydub/utils.py:300: SyntaxWarning: invalid escape sequence '\('
+  m = re.match('([su]([0-9]{1,2})p?) \(([0-9]{1,2}) bit\)$', token)
+/Users/baydogan/Documents/ComputerScience/Projects/ITU_Student_Convince_AI/AIme_Girl-main/.venv/lib/python3.12/site-packages/pydub/utils.py:301: SyntaxWarning: invalid escape sequence '\('
+  m2 = re.match('([su]([0-9]{1,2})p?)( \(default\))?$', token)
+/Users/baydogan/Documents/ComputerScience/Projects/ITU_Student_Convince_AI/AIme_Girl-main/.venv/lib/python3.12/site-packages/pydub/utils.py:310: SyntaxWarning: invalid escape sequence '\('
+  elif re.match('(flt)p?( \(default\))?$', token):
+/Users/baydogan/Documents/ComputerScience/Projects/ITU_Student_Convince_AI/AIme_Girl-main/.venv/lib/python3.12/site-packages/pydub/utils.py:314: SyntaxWarning: invalid escape sequence '\('
+  elif re.match('(dbl)p?( \(default\))?$', token):
+NEWSAPI_API_KEY is not set. News API functionality will be disabled.
+INFO:     Started server process [79492]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Stopping reloader process [79468]

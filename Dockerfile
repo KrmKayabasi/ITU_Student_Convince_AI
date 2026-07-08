@@ -17,10 +17,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY models/ /srv/models/
 ENV MODELS_DIR=/srv/models
 
-COPY app/ /srv/app/
+COPY backend/cv_pipeline/ /srv/backend/cv_pipeline/
+ENV PYTHONPATH=/srv
 
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=3s CMD curl -f http://localhost:8000/health || exit 1
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "backend.cv_pipeline.main:app", "--host", "0.0.0.0", "--port", "8000"]

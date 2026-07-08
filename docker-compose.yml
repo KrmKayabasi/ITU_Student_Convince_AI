@@ -1,32 +1,12 @@
-# Birlesik stack: goruntu isleme (cv-pipeline) + AIme_Girl (Unmute sesli AI).
+# Birlesik stack: goruntu isleme (cv-pipeline) + AIme_Girl (Unmute sesli AI) uctan uca dockerize edilmis.
 #
 # Tek komutla ayaga kaldirir:
 #   docker compose up --build
 #
-# ┌──────────────────────────────────────────────────────────────────────────┐
-# │ ONEMLI - Apple Silicon (Mac) notu:                                        │
-# │ AIme_Girl'un STT/TTS/LLM servisleri Metal/MPS (Apple GPU) gerektirir ve    │
-# │ Docker Desktop for Mac konteynerlere GPU passthrough VERMEDIGI icin bu     │
-# │ compose'a DAHIL EDILEMEZ. Onlar host'ta native calisir. Sesli AI'in uctan  │
-# │ uca calismasi icin, bu compose'u baslatmadan ONCE 3 ayri terminalde:       │
-# │     cd AIme_Girl-main && ./dockerless/start_stt_mps.sh                      │
-# │     cd AIme_Girl-main && ./dockerless/start_tts_mps.sh                      │
-# │     cd AIme_Girl-main && ./dockerless/start_llm_mps.sh                      │
-# │ Sadece goruntu islemeyi (cv-pipeline) istiyorsaniz onlara gerek yok.       │
-# └──────────────────────────────────────────────────────────────────────────┘
-#
-# Servisler ve portlar:
-#   cv-pipeline    -> http://localhost:8000  (goruntu isleme ingest/WS servisi)
-#   aime-backend   -> http://localhost:8001  (Unmute backend)
-#   aime-frontend  -> http://localhost:3000  (Unmute web arayuzu; tarayicidan bu)
-#
-# NOT: AIme_Girl'un kendi docker-compose.yml'indeki traefik bu Mac'in Docker
-# surumuyle uyumsuz oldugu icin burada kullanilmiyor; frontend "dockerless"
-# moda (NEXT_PUBLIC_IN_DOCKER=false) alinip backend'e dogrudan :8001'den baglanir.
 name: bbf-suite
 
 services:
-  # ── Goruntu isleme (BBF_Tanitim ana projesi) ──────────────────────────────
+  # ── Goruntu isleme (FastAPI) ──────────────────────────────────────────────
   cv-pipeline:
     image: cv-pipeline:latest
     build:
@@ -40,39 +20,95 @@ services:
   aime-backend:
     image: unmute-backend:latest
     build:
-      context: ./AIme_Girl-main
+      context: ./backend/voice_agent
       dockerfile: Dockerfile
       target: hot-reloading
     volumes:
-      - ./AIme_Girl-main/unmute:/app/unmute
+      - ./backend/voice_agent/unmute:/app/unmute
     environment:
-      # STT/TTS/LLM host'ta native (Metal) calisir; container'dan host'a
-      # host.docker.internal uzerinden erisilir.
-      - KYUTAI_STT_URL=ws://host.docker.internal:8090
-      - KYUTAI_TTS_URL=ws://host.docker.internal:8089
-      - KYUTAI_LLM_URL=http://host.docker.internal:8091
-      - KYUTAI_LLM_MODEL=${KYUTAI_LLM_MODEL:-mlx-community/gemma-3-1b-it-4bit}
+      - KYUTAI_STT_URL=ws://stt:8080
+      - KYUTAI_TTS_URL=ws://tts:8080
+      - KYUTAI_LLM_URL=http://llm:8000
+      - KYUTAI_LLM_MODEL=${KYUTAI_LLM_MODEL:-google/gemma-4-E2B-it}
       - UNMUTE_DEFAULT_LANGUAGE=${UNMUTE_DEFAULT_LANGUAGE:-tr}
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     ports:
       - "8001:80"
+    depends_on:
+      - stt
+      - tts
+      - llm
     restart: unless-stopped
 
   # ── AIme_Girl (Unmute) frontend ───────────────────────────────────────────
   aime-frontend:
     image: unmute-frontend:latest
     build:
-      context: ./AIme_Girl-main/frontend
+      context: ./frontend
       dockerfile: hot-reloading.Dockerfile
     volumes:
-      - ./AIme_Girl-main/frontend/src:/app/src
+      - ./frontend/src:/app/src
     environment:
-      # traefik yok; backend'e ayni host'ta :8001'den dogrudan baglan.
       - NEXT_PUBLIC_IN_DOCKER=false
       - NEXT_PUBLIC_BACKEND_PORT=8001
     ports:
       - "3000:3000"
     depends_on:
       - aime-backend
+    restart: unless-stopped
+
+  # ── Moshi Speech-to-Text (STT) ─────────────────────────────────────────────
+  stt:
+    image: moshi-server:latest
+    build:
+      context: ./backend/voice_agent/services/moshi-server
+      dockerfile: public.Dockerfile
+    command: ["worker", "--config", "configs/stt.toml"]
+    environment:
+      - HUGGING_FACE_HUB_TOKEN=$HUGGING_FACE_HUB_TOKEN
+    volumes:
+      - ./volumes/hf-cache:/root/.cache/huggingface
+      - ./volumes/cargo-registry-stt:/root/.cargo/registry
+      - ./volumes/stt-target:/app/target
+      - ./volumes/uv-cache:/root/.cache/uv
+      - ./volumes/stt-logs:/tmp/unmute_logs
+    ports:
+      - "8090:8080"
+    restart: unless-stopped
+
+  # ── Moshi Text-to-Speech (TTS) ─────────────────────────────────────────────
+  tts:
+    image: moshi-server:latest
+    build:
+      context: ./backend/voice_agent/services/moshi-server
+      dockerfile: public.Dockerfile
+    command: ["worker", "--config", "configs/tts.toml"]
+    environment:
+      - HUGGING_FACE_HUB_TOKEN=$HUGGING_FACE_HUB_TOKEN
+    volumes:
+      - ./volumes/hf-cache:/root/.cache/huggingface
+      - ./volumes/cargo-registry-tts:/root/.cargo/registry
+      - ./volumes/tts-target:/app/target
+      - ./volumes/uv-cache:/root/.cache/uv
+      - ./volumes/tts-logs:/tmp/unmute_logs
+    ports:
+      - "8089:8080"
+    restart: unless-stopped
+
+  # ── vLLM Gemma 4 OpenAI server ────────────────────────────────────────────
+  llm:
+    image: vllm/vllm-openai:v0.11.0
+    command:
+      [
+        "--model=google/gemma-4-E2B-it",
+        "--max-model-len=1536",
+        "--dtype=bfloat16",
+        "--gpu-memory-utilization=0.4"
+      ]
+    environment:
+      - HUGGING_FACE_HUB_TOKEN=$HUGGING_FACE_HUB_TOKEN
+    volumes:
+      - ./volumes/hf-cache:/root/.cache/huggingface
+      - ./volumes/vllm-cache:/root/.cache/vllm
+    ports:
+      - "8091:8000"
     restart: unless-stopped

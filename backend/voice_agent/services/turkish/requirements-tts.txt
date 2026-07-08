@@ -1,0 +1,4 @@
+fastapi[standard]>=0.115.12
+msgpack>=1.1.0
+numpy>=1.26
+sherpa-onnx>=1.10.0

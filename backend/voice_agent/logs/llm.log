@@ -1,0 +1,85 @@
+++ dirname ./dockerless/start_llm.sh
++ cd ./dockerless/..
++ uv tool run --with transformers==4.55.2 vllm@v0.11.0 serve --model=google/gemma-3-1b-it --max-model-len=2048 --dtype=bfloat16 --gpu-memory-utilization=0.3 --port=8091 --hf-overrides '{"rope_scaling": {"rope_type": "default", "factor": 1.0}, "sliding_window": null}'
+INFO 07-08 19:27:56 [__init__.py:216] Automatically detected platform cpu.
+[1;36m(APIServer pid=79485)[0;0m INFO 07-08 19:27:58 [api_server.py:1839] vLLM API server version 0.11.0
+[1;36m(APIServer pid=79485)[0;0m INFO 07-08 19:27:58 [utils.py:233] non-default args: {'port': 8091, 'model': 'google/gemma-3-1b-it', 'dtype': 'bfloat16', 'max_model_len': 2048, 'hf_overrides': {'rope_scaling': {'rope_type': 'default', 'factor': 1.0}, 'sliding_window': None}, 'gpu_memory_utilization': 0.3}
+[1;36m(APIServer pid=79485)[0;0m INFO 07-08 19:27:59 [model.py:547] Resolved architecture: Gemma3ForCausalLM
+[1;36m(APIServer pid=79485)[0;0m INFO 07-08 19:27:59 [model.py:1510] Using max model len 2048
+[1;36m(APIServer pid=79485)[0;0m WARNING 07-08 19:27:59 [cpu.py:117] Environment variable VLLM_CPU_KVCACHE_SPACE (GiB) for CPU backend is not set, using 4 by default.
+[1;36m(APIServer pid=79485)[0;0m INFO 07-08 19:27:59 [arg_utils.py:1166] Chunked prefill is not supported for ARM and POWER and S390X CPUs; disabling it for V1 backend.
+INFO 07-08 19:28:02 [__init__.py:216] Automatically detected platform cpu.
+[1;36m(EngineCore_DP0 pid=79524)[0;0m INFO 07-08 19:28:04 [core.py:644] Waiting for init message from front-end.
+[1;36m(EngineCore_DP0 pid=79524)[0;0m INFO 07-08 19:28:04 [core.py:77] Initializing a V1 LLM engine (v0.11.0) with config: model='google/gemma-3-1b-it', speculative_config=None, tokenizer='google/gemma-3-1b-it', skip_tokenizer_init=False, tokenizer_mode=auto, revision=None, tokenizer_revision=None, trust_remote_code=False, dtype=torch.bfloat16, max_seq_len=2048, download_dir=None, load_format=auto, tensor_parallel_size=1, pipeline_parallel_size=1, data_parallel_size=1, disable_custom_all_reduce=True, quantization=None, enforce_eager=False, kv_cache_dtype=auto, device_config=cpu, structured_outputs_config=StructuredOutputsConfig(backend='auto', disable_fallback=False, disable_any_whitespace=False, disable_additional_properties=False, reasoning_parser=''), observability_config=ObservabilityConfig(show_hidden_metrics_for_version=None, otlp_traces_endpoint=None, collect_detailed_traces=None), seed=0, served_model_name=google/gemma-3-1b-it, enable_prefix_caching=True, chunked_prefill_enabled=False, pooler_config=None, compilation_config={"level":2,"debug_dump_path":"","cache_dir":"","backend":"inductor","custom_ops":["none"],"splitting_ops":null,"use_inductor":true,"compile_sizes":null,"inductor_compile_config":{"enable_auto_functionalized_v2":false,"dce":true,"size_asserts":false,"nan_asserts":false,"epilogue_fusion":true},"inductor_passes":{},"cudagraph_mode":0,"use_cudagraph":true,"cudagraph_num_of_warmups":0,"cudagraph_capture_sizes":[],"cudagraph_copy_inputs":false,"full_cuda_graph":false,"use_inductor_graph_partition":false,"pass_config":{},"max_capture_size":null,"local_cache_dir":null}
+[1;36m(EngineCore_DP0 pid=79524)[0;0m INFO 07-08 19:28:04 [importing.py:63] Triton not installed or not compatible; certain GPU-related functions will not be available.
+[1;36m(EngineCore_DP0 pid=79524)[0;0m WARNING 07-08 19:28:04 [cpu.py:316] Pin memory is not supported on CPU.
+[1;36m(EngineCore_DP0 pid=79524)[0;0m INFO 07-08 19:28:05 [cpu_worker.py:66] Warning: NUMA is not enabled in this build. `init_cpu_threads_env` has no effect to setup thread affinity.
+[1;36m(EngineCore_DP0 pid=79524)[0;0m INFO 07-08 19:28:05 [parallel_state.py:1208] rank 0 in world size 1 is assigned as DP rank 0, PP rank 0, TP rank 0, EP rank 0
+[1;36m(EngineCore_DP0 pid=79524)[0;0m INFO 07-08 19:28:05 [cpu_model_runner.py:106] Starting to load model google/gemma-3-1b-it...
+[1;36m(EngineCore_DP0 pid=79524)[0;0m INFO 07-08 19:28:05 [cpu.py:104] Using Torch SDPA backend.
+[1;36m(EngineCore_DP0 pid=79524)[0;0m INFO 07-08 19:28:07 [weight_utils.py:392] Using model weights format ['*.safetensors']
+[1;36m(EngineCore_DP0 pid=79524)[0;0m INFO 07-08 19:28:07 [weight_utils.py:450] No model.safetensors.index.json found in remote.
+[1;36m(EngineCore_DP0 pid=79524)[0;0m Loading safetensors checkpoint shards:   0% Completed | 0/1 [00:00<?, ?it/s]
+[1;36m(EngineCore_DP0 pid=79524)[0;0m Loading safetensors checkpoint shards: 100% Completed | 1/1 [00:01<00:00,  1.49s/it]
+[1;36m(EngineCore_DP0 pid=79524)[0;0m Loading safetensors checkpoint shards: 100% Completed | 1/1 [00:01<00:00,  1.49s/it]
+[1;36m(EngineCore_DP0 pid=79524)[0;0m 
+[1;36m(EngineCore_DP0 pid=79524)[0;0m INFO 07-08 19:28:09 [default_loader.py:267] Loading weights took 1.50 seconds
+[1;36m(EngineCore_DP0 pid=79524)[0;0m INFO 07-08 19:28:09 [kv_cache_utils.py:1087] GPU KV cache size: 161,312 tokens
+[1;36m(EngineCore_DP0 pid=79524)[0;0m INFO 07-08 19:28:09 [kv_cache_utils.py:1091] Maximum concurrency for 2,048 tokens per request: 78.77x
+[1;36m(EngineCore_DP0 pid=79524)[0;0m INFO 07-08 19:28:09 [cpu_model_runner.py:117] Warming up model for the compilation...
+[1;36m(EngineCore_DP0 pid=79524)[0;0m WARNING 07-08 19:28:09 [cudagraph_dispatcher.py:106] cudagraph dispatching keys are not initialized. No cudagraph will be used.
+[1;36m(APIServer pid=79485)[0;0m Traceback (most recent call last):
+[1;36m(APIServer pid=79485)[0;0m   File "/Users/baydogan/.cache/uv/archive-v0/Wl-Ng86hSpkM3TRvKDsI9/bin/vllm", line 12, in <module>
+[1;36m(APIServer pid=79485)[0;0m     sys.exit(main())
+[1;36m(APIServer pid=79485)[0;0m              ^^^^^^
+[1;36m(APIServer pid=79485)[0;0m   File "/Users/baydogan/.cache/uv/archive-v0/Wl-Ng86hSpkM3TRvKDsI9/lib/python3.12/site-packages/vllm/entrypoints/cli/main.py", line 54, in main
+[1;36m(APIServer pid=79485)[0;0m     args.dispatch_function(args)
+[1;36m(APIServer pid=79485)[0;0m   File "/Users/baydogan/.cache/uv/archive-v0/Wl-Ng86hSpkM3TRvKDsI9/lib/python3.12/site-packages/vllm/entrypoints/cli/serve.py", line 57, in cmd
+[1;36m(APIServer pid=79485)[0;0m     uvloop.run(run_server(args))
+[1;36m(APIServer pid=79485)[0;0m   File "/Users/baydogan/.cache/uv/archive-v0/Wl-Ng86hSpkM3TRvKDsI9/lib/python3.12/site-packages/uvloop/__init__.py", line 96, in run
+[1;36m(APIServer pid=79485)[0;0m     return __asyncio.run(
+[1;36m(APIServer pid=79485)[0;0m            ^^^^^^^^^^^^^^
+[1;36m(APIServer pid=79485)[0;0m   File "/Users/baydogan/.local/share/uv/python/cpython-3.12.9-macos-aarch64-none/lib/python3.12/asyncio/runners.py", line 195, in run
+[1;36m(APIServer pid=79485)[0;0m     return runner.run(main)
+[1;36m(APIServer pid=79485)[0;0m            ^^^^^^^^^^^^^^^^
+[1;36m(APIServer pid=79485)[0;0m   File "/Users/baydogan/.local/share/uv/python/cpython-3.12.9-macos-aarch64-none/lib/python3.12/asyncio/runners.py", line 118, in run
+[1;36m(APIServer pid=79485)[0;0m     return self._loop.run_until_complete(task)
+[1;36m(APIServer pid=79485)[0;0m            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[1;36m(APIServer pid=79485)[0;0m   File "uvloop/loop.pyx", line 1518, in uvloop.loop.Loop.run_until_complete
+[1;36m(APIServer pid=79485)[0;0m   File "/Users/baydogan/.cache/uv/archive-v0/Wl-Ng86hSpkM3TRvKDsI9/lib/python3.12/site-packages/uvloop/__init__.py", line 48, in wrapper
+[1;36m(APIServer pid=79485)[0;0m     return await main
+[1;36m(APIServer pid=79485)[0;0m            ^^^^^^^^^^
+[1;36m(APIServer pid=79485)[0;0m   File "/Users/baydogan/.cache/uv/archive-v0/Wl-Ng86hSpkM3TRvKDsI9/lib/python3.12/site-packages/vllm/entrypoints/openai/api_server.py", line 1884, in run_server
+[1;36m(APIServer pid=79485)[0;0m     await run_server_worker(listen_address, sock, args, **uvicorn_kwargs)
+[1;36m(APIServer pid=79485)[0;0m   File "/Users/baydogan/.cache/uv/archive-v0/Wl-Ng86hSpkM3TRvKDsI9/lib/python3.12/site-packages/vllm/entrypoints/openai/api_server.py", line 1902, in run_server_worker
+[1;36m(APIServer pid=79485)[0;0m     async with build_async_engine_client(
+[1;36m(APIServer pid=79485)[0;0m                ^^^^^^^^^^^^^^^^^^^^^^^^^^
+[1;36m(APIServer pid=79485)[0;0m   File "/Users/baydogan/.local/share/uv/python/cpython-3.12.9-macos-aarch64-none/lib/python3.12/contextlib.py", line 210, in __aenter__
+[1;36m(APIServer pid=79485)[0;0m     return await anext(self.gen)
+[1;36m(APIServer pid=79485)[0;0m            ^^^^^^^^^^^^^^^^^^^^^
+[1;36m(APIServer pid=79485)[0;0m   File "/Users/baydogan/.cache/uv/archive-v0/Wl-Ng86hSpkM3TRvKDsI9/lib/python3.12/site-packages/vllm/entrypoints/openai/api_server.py", line 180, in build_async_engine_client
+[1;36m(APIServer pid=79485)[0;0m     async with build_async_engine_client_from_engine_args(
+[1;36m(APIServer pid=79485)[0;0m                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[1;36m(APIServer pid=79485)[0;0m   File "/Users/baydogan/.local/share/uv/python/cpython-3.12.9-macos-aarch64-none/lib/python3.12/contextlib.py", line 210, in __aenter__
+[1;36m(APIServer pid=79485)[0;0m     return await anext(self.gen)
+[1;36m(APIServer pid=79485)[0;0m            ^^^^^^^^^^^^^^^^^^^^^
+[1;36m(APIServer pid=79485)[0;0m   File "/Users/baydogan/.cache/uv/archive-v0/Wl-Ng86hSpkM3TRvKDsI9/lib/python3.12/site-packages/vllm/entrypoints/openai/api_server.py", line 225, in build_async_engine_client_from_engine_args
+[1;36m(APIServer pid=79485)[0;0m     async_llm = AsyncLLM.from_vllm_config(
+[1;36m(APIServer pid=79485)[0;0m                 ^^^^^^^^^^^^^^^^^^^^^^^^^^
+[1;36m(APIServer pid=79485)[0;0m   File "/Users/baydogan/.cache/uv/archive-v0/Wl-Ng86hSpkM3TRvKDsI9/lib/python3.12/site-packages/vllm/utils/__init__.py", line 1572, in inner
+[1;36m(APIServer pid=79485)[0;0m     return fn(*args, **kwargs)
+[1;36m(APIServer pid=79485)[0;0m            ^^^^^^^^^^^^^^^^^^^
+[1;36m(APIServer pid=79485)[0;0m   File "/Users/baydogan/.cache/uv/archive-v0/Wl-Ng86hSpkM3TRvKDsI9/lib/python3.12/site-packages/vllm/v1/engine/async_llm.py", line 207, in from_vllm_config
+[1;36m(APIServer pid=79485)[0;0m     return cls(
+[1;36m(APIServer pid=79485)[0;0m            ^^^^
+[1;36m(APIServer pid=79485)[0;0m   File "/Users/baydogan/.cache/uv/archive-v0/Wl-Ng86hSpkM3TRvKDsI9/lib/python3.12/site-packages/vllm/v1/engine/async_llm.py", line 134, in __init__
+[1;36m(APIServer pid=79485)[0;0m     self.engine_core = EngineCoreClient.make_async_mp_client(
+[1;36m(APIServer pid=79485)[0;0m                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[1;36m(APIServer pid=79485)[0;0m   File "/Users/baydogan/.cache/uv/archive-v0/Wl-Ng86hSpkM3TRvKDsI9/lib/python3.12/site-packages/vllm/v1/engine/core_client.py", line 102, in make_async_mp_client
+[1;36m(APIServer pid=79485)[0;0m     return AsyncMPClient(*client_args)
+[1;36m(APIServer pid=79485)[0;0m            ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[1;36m(APIServer pid=79485)[0;0m   File "/Users/baydogan/.cache/uv/archive-v0/Wl-Ng86hSpkM3TRvKDsI9/lib/python3.12/site-packages/vllm/v1/engine/core_client.py", line 769, in __init__
+[1;36m(APIServer pid=79485)[0;0m     super().__init__(
+[1;36m(APIServer pid=79485)[0;0m   File "/Users/baydogan/.cache/uv/archive-v0/Wl-Ng86hSpkM3TRvKDsI9/lib/python3.12/site-packages/vllm/v1/engine/core_client.py", line 496, in __init__
+[1;36m(APIServer pid=79485)[0;0m     raise TimeoutError("Timed out waiting for engines to send"
+[1;36m(APIServer pid=79485)[0;0m TimeoutError: Timed out waiting for engines to sendinitial message on input socket.

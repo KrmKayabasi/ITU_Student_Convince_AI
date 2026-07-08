@@ -1,0 +1,58 @@
+++ dirname ./dockerless/start_stt.sh
++ cd ./dockerless/..
++ '[' -d .venv ']'
++ source .venv/bin/activate
+++ '[' -n x ']'
+++ SCRIPT_PATH=.venv/bin/activate
+++ '[' .venv/bin/activate = ./dockerless/start_stt.sh ']'
+++ deactivate nondestructive
+++ unset -f pydoc
+++ '[' -z '' ']'
+++ '[' -z '' ']'
+++ hash -r
+++ '[' -z '' ']'
+++ unset VIRTUAL_ENV
+++ unset VIRTUAL_ENV_PROMPT
+++ '[' '!' nondestructive = nondestructive ']'
+++ VIRTUAL_ENV=/Users/baydogan/Documents/ComputerScience/Projects/ITU_Student_Convince_AI/AIme_Girl-main/.venv
+++ '[' darwin25 = cygwin ']'
+++ '[' darwin25 = msys ']'
+++ export VIRTUAL_ENV
+++ _OLD_VIRTUAL_PATH='/Users/baydogan/Documents/ComputerScience/Projects/ITU_Student_Convince_AI/AIme_Girl-main/.venv/bin:/Users/baydogan/.gemini/antigravity/bin:/Users/baydogan/Library/Application Support/Antigravity/bin:/Users/baydogan/.local/bin:/Users/baydogan/.antigravity/antigravity/bin:/opt/homebrew/opt/llvm@18/bin:/Library/Frameworks/Python.framework/Versions/3.11/bin:/Library/Frameworks/Python.framework/Versions/3.12/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/Library/Apple/usr/bin:/Library/TeX/texbin:/Applications/Wireshark.app/Contents/MacOS:/Library/Frameworks/Mono.framework/Versions/Current/Commands:/Users/baydogan/.cargo/bin:/Applications/Ghostty.app/Contents/MacOS'
+++ PATH='/Users/baydogan/Documents/ComputerScience/Projects/ITU_Student_Convince_AI/AIme_Girl-main/.venv/bin:/Users/baydogan/Documents/ComputerScience/Projects/ITU_Student_Convince_AI/AIme_Girl-main/.venv/bin:/Users/baydogan/.gemini/antigravity/bin:/Users/baydogan/Library/Application Support/Antigravity/bin:/Users/baydogan/.local/bin:/Users/baydogan/.antigravity/antigravity/bin:/opt/homebrew/opt/llvm@18/bin:/Library/Frameworks/Python.framework/Versions/3.11/bin:/Library/Frameworks/Python.framework/Versions/3.12/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/Library/Apple/usr/bin:/Library/TeX/texbin:/Applications/Wireshark.app/Contents/MacOS:/Library/Frameworks/Mono.framework/Versions/Current/Commands:/Users/baydogan/.cargo/bin:/Applications/Ghostty.app/Contents/MacOS'
+++ export PATH
+++ '[' xunmute '!=' x ']'
+++ VIRTUAL_ENV_PROMPT='(unmute) '
+++ export VIRTUAL_ENV_PROMPT
+++ '[' -z '' ']'
+++ '[' -z '' ']'
+++ _OLD_VIRTUAL_PS1=
+++ PS1='(unmute) '
+++ export PS1
+++ alias pydoc
+++ true
+++ hash -r
+++ python -c 'import sys; print(sys.base_prefix)'
++ export PYTHONHOME=/Users/baydogan/.local/share/uv/python/cpython-3.12.9-macos-aarch64-none
++ PYTHONHOME=/Users/baydogan/.local/share/uv/python/cpython-3.12.9-macos-aarch64-none
+++ python -c 'import site; print(site.getsitepackages()[0])'
++ export PYTHONPATH=/Users/baydogan/Documents/ComputerScience/Projects/ITU_Student_Convince_AI/AIme_Girl-main/.venv/lib/python3.12/site-packages
++ PYTHONPATH=/Users/baydogan/Documents/ComputerScience/Projects/ITU_Student_Convince_AI/AIme_Girl-main/.venv/lib/python3.12/site-packages
++ export 'CXXFLAGS=-include cstdint'
++ CXXFLAGS='-include cstdint'
++ export CMAKE_POLICY_VERSION_MINIMUM=3.5
++ CMAKE_POLICY_VERSION_MINIMUM=3.5
+++ uname
++ '[' Darwin == Darwin ']'
+++ python -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))'
++ export DYLD_LIBRARY_PATH=/Users/baydogan/.local/share/uv/python/cpython-3.12.9-macos-aarch64-none/lib
++ DYLD_LIBRARY_PATH=/Users/baydogan/.local/share/uv/python/cpython-3.12.9-macos-aarch64-none/lib
++ cargo install --features metal moshi-server@0.6.4
+    Blocking waiting for file lock on package cache
+     Ignored package `moshi-server v0.6.4` is already installed, use --force to override
++ moshi-server worker --config services/moshi-server/configs/stt.toml --port 8090
+[2m2026-07-08T16:27:53.996462Z[0m [32m INFO[0m [2mmoshi_server[0m[2m:[0m [2m/Users/baydogan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/moshi-server-0.6.4/src/main.rs[0m[2m:[0m[2m475:[0m [3mbuild_info[0m[2m=[0mBuildInfo { build_timestamp: "2026-07-08T15:13:58.795494000Z", build_date: "2026-07-08", git_branch: "VERGEN_IDEMPOTENT_OUTPUT", git_timestamp: "VERGEN_IDEMPOTENT_OUTPUT", git_date: "VERGEN_IDEMPOTENT_OUTPUT", git_hash: "VERGEN_IDEMPOTENT_OUTPUT", git_describe: "VERGEN_IDEMPOTENT_OUTPUT", rustc_host_triple: "aarch64-apple-darwin", rustc_version: "1.95.0", cargo_target_triple: "aarch64-apple-darwin" }
+[2m2026-07-08T16:27:53.996482Z[0m [32m INFO[0m [2mmoshi_server[0m[2m:[0m [2m/Users/baydogan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/moshi-server-0.6.4/src/main.rs[0m[2m:[0m[2m549:[0m starting worker [3mnum_workers[0m[2m=[0m16
+[2m2026-07-08T16:27:54.971884Z[0m [32m INFO[0m [2mmoshi_server[0m[2m:[0m [2m/Users/baydogan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/moshi-server-0.6.4/src/main.rs[0m[2m:[0m[2m576:[0m listening on http://0.0.0.0:8090
+[2m2026-07-08T16:27:54.971890Z[0m [32m INFO[0m [2mmoshi_server::batched_asr[0m[2m:[0m [2m/Users/baydogan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/moshi-server-0.6.4/src/batched_asr.rs[0m[2m:[0m[2m226:[0m warming-up the asr
+[2m2026-07-08T16:27:55.028378Z[0m [32m INFO[0m [2mmoshi_server::batched_asr[0m[2m:[0m [2m/Users/baydogan/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/moshi-server-0.6.4/src/batched_asr.rs[0m[2m:[0m[2m228:[0m starting asr loop 1

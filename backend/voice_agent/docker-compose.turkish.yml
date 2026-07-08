@@ -1,0 +1,83 @@
+# Optional override for benchmarking a Turkish low-latency pipeline.
+# Run with:
+#   docker compose -f docker-compose.yml -f docker-compose.turkish.yml up --build
+services:
+  backend:
+    environment:
+      - KYUTAI_STT_URL=ws://stt:8080
+      - KYUTAI_TTS_URL=ws://tts:8080
+      - KYUTAI_LLM_URL=http://llm:8000
+      - KYUTAI_LLM_MODEL=${KYUTAI_LLM_MODEL:-google/gemma-4-E2B-it}
+      - KYUTAI_LLM_MAX_TOKENS=${KYUTAI_LLM_MAX_TOKENS:-160}
+      # Speak Turkish from the very first reply, before session.update arrives.
+      - UNMUTE_DEFAULT_LANGUAGE=${UNMUTE_DEFAULT_LANGUAGE:-tr}
+      # Sampling: reduce Gemma repetition (set to <=0 to disable a knob).
+      - KYUTAI_LLM_TOP_P=${KYUTAI_LLM_TOP_P:-0.9}
+      - KYUTAI_LLM_REPETITION_PENALTY=${KYUTAI_LLM_REPETITION_PENALTY:-1.1}
+
+  stt:
+    build:
+      context: ./
+      dockerfile: services/turkish/stt.Dockerfile
+    environment:
+      - HUGGING_FACE_HUB_TOKEN=${HUGGING_FACE_HUB_TOKEN}
+      - WHISPER_MODEL=${WHISPER_MODEL:-Systran/faster-whisper-large-v3}
+      - WHISPER_DEVICE=${WHISPER_DEVICE:-cuda}
+      - WHISPER_COMPUTE_TYPE=${WHISPER_COMPUTE_TYPE:-int8_float16}
+      - WHISPER_LANGUAGE=${WHISPER_LANGUAGE:-tr}
+      - WHISPER_BEAM_SIZE=${WHISPER_BEAM_SIZE:-1}
+      - WHISPER_WARMUP_SEC=${WHISPER_WARMUP_SEC:-1.0}
+      - STT_SPEECH_RMS_THRESHOLD=${STT_SPEECH_RMS_THRESHOLD:-0.008}
+      - STT_END_SILENCE_SEC=${STT_END_SILENCE_SEC:-0.35}
+      - STT_NOISE_FLOOR_ALPHA=${STT_NOISE_FLOOR_ALPHA:-0.02}
+      - STT_SPEECH_FACTOR=${STT_SPEECH_FACTOR:-3.0}
+      - STT_SPEECH_OFF_FACTOR=${STT_SPEECH_OFF_FACTOR:-1.5}
+      - STT_PREROLL_SEC=${STT_PREROLL_SEC:-0.2}
+    volumes:
+      - ./volumes/hf-cache:/root/.cache/huggingface
+    ports:
+      - "8090:8080"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  tts:
+    build:
+      context: ./
+      dockerfile: services/turkish/tts.Dockerfile
+      args:
+        INSTALL_SUPERTONIC: ${INSTALL_SUPERTONIC:-false}
+    environment:
+      - HUGGING_FACE_HUB_TOKEN=${HUGGING_FACE_HUB_TOKEN}
+      - TURKISH_TTS_BACKEND=${TURKISH_TTS_BACKEND:-sherpa}
+      - SHERPA_TTS_MODEL_DIR=/models/sherpa-tts
+      - SHERPA_TTS_MODEL_URL=${SHERPA_TTS_MODEL_URL:-https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-tr_TR-dfki-medium.tar.bz2}
+      - SHERPA_TTS_PROVIDER=${SHERPA_TTS_PROVIDER:-cpu}
+      - SHERPA_TTS_NUM_THREADS=${SHERPA_TTS_NUM_THREADS:-2}
+      - SHERPA_TTS_SPEED=${SHERPA_TTS_SPEED:-1.05}
+      - TTS_CHUNK_WORDS=${TTS_CHUNK_WORDS:-8}
+      - SUPERTONIC_LANG=${SUPERTONIC_LANG:-tr}
+      - SUPERTONIC_VOICE=${SUPERTONIC_VOICE:-M1}
+      - SUPERTONIC_STEPS=${SUPERTONIC_STEPS:-5}
+      - SUPERTONIC_SPEED=${SUPERTONIC_SPEED:-1.1}
+    volumes:
+      - ./volumes/turkish-tts-models:/models
+      - ./volumes/hf-cache:/root/.cache/huggingface
+    ports:
+      - "8089:8080"
+
+  llm:
+    image: vllm/vllm-openai:latest
+    command:
+      [
+        "--model=google/gemma-4-E2B-it",
+        "--max-model-len=2048",
+        "--dtype=auto",
+        "--gpu-memory-utilization=0.70",
+        "--max-num-seqs=64",
+        "--enable-prefix-caching",
+      ]
