@@ -1,0 +1,54 @@
+# ODTÜ (Orta Doğu Teknik Üniversitesi) — Computer Engineering
+
+**Üniversite:** ODTÜ (Orta Doğu Teknik Üniversitesi) · **Bölüm:** Computer Engineering · **Dil:** %100 İngilizce
+**Kaynak:** https://catalog.metu.edu.tr/program.php?fac_prog=571
+**Plan:** catalog fac_prog=571 · **Ders sayısı:** 46
+
+| Yarıyıl | Kod | Ders | Kredi | AKTS |
+|---|---|---|---|---|
+| Semester 1 | PHYS105 | GENERAL PHYSICS I | 4 | 6.0 |
+| Semester 1 | MATH119 | CALCULUS WITH ANALYTIC GEOMETRY | 5 | 7.0 |
+| Semester 1 | BIOL109 | INTRODUCTION TO MOLECULAR BIOLOGY | 3 | 5.0 |
+| Semester 1 | CENG100 | COMPUTER ENGINEERING ORIENTATION | 0 | 1.0 |
+| Semester 1 | CENG111 | INTRODUCTION TO COMPUTER ENG. CONCEPTS | 4 | 4.0 |
+| Semester 1 | ENG101 | ENGLISH FOR ACADEMIC PURPOSES I | 4 | 6.0 |
+| Semester 1 | OHS101 | OCCUPATIONAL HEALTH AND SAFETY-I | 0 | 2.0 |
+| Semester 1 | IS100 | INTRODUCTION TO INFORMATION TECHNOLOGIES AND APPLICATIONS | 0 | 1.0 |
+| Semester 2 | PHYS106 | GENERAL PHYSICS II | 4 | 6.0 |
+| Semester 2 | MATH120 | CALCULUS OF FUNCTIONS OF SEVERAL VARIABLES | 5 | 7.5 |
+| Semester 2 | MATH260 | BASIC LINEAR ALGEBRA | 3 | 5.0 |
+| Semester 2 | BA100 | CAREER PLANNING | 0 | 2.0 |
+| Semester 2 | CENG140 | C PROGRAMMING | 4 | 4.0 |
+| Semester 2 | ENG102 | ENGLISH FOR ACADEMIC PURPOSES II | 4 | 6.0 |
+| Semester 3 | MATH219 | INTRODUCTION TO DIFFERENTIAL EQUATIONS | 4 | 7.0 |
+| Semester 3 | EE281 | ELECTRICAL CIRCUITS | 4 | 6.0 |
+| Semester 3 | CENG213 | DATA STRUCTURES | 4 | 7.0 |
+| Semester 3 | CENG223 | DISCRETE COMPUTATIONAL STRUCTURES | 3 | 6.0 |
+| Semester 3 | ENG211 | ACADEMIC SPEAKING SKILLS | 3 | 4.0 |
+| Semester 3 | HIST2201 |  | 0 | 2.0 |
+| Semester 3 | HIST2205 | HISTORY OF THE TURKISH REVOLUTION I | 0 | 2.0 |
+| Semester 4 | CENG222 | STATISTICAL METHODS FOR COMPUTER ENGINEERING | 3 | 5.0 |
+| Semester 4 | CENG232 | LOGIC DESIGN | 4 | 7.0 |
+| Semester 4 | CENG242 | PROGRAMMING LANGUAGE CONCEPTS | 4 | 7.0 |
+| Semester 4 | CENG280 | FORMAL LANGU.AND ABSTRACT MACHINES | 3 | 6.0 |
+| Semester 4 | HIST2202 |  | 0 | 2.0 |
+| Semester 4 | HIST2206 | HISTORY OF THE TURKISH REVOLUTION II | 0 | 2.0 |
+| Semester 5 | CENG300 | SUMMER PRACTICE I | 0 | 5.0 |
+| Semester 5 | CENG315 | ALGORITHMS | 3 | 6.0 |
+| Semester 5 | CENG331 | COMPUTER ORGANIZATION | 3 | 6.0 |
+| Semester 5 | CENG351 | DATA MANAGEMENT AND FILE STRUCTURES | 3 | 6.0 |
+| Semester 5 | OHS301 | OCCUPATIONAL HEALTH AND SAFETY - II | 0 | 2.0 |
+| Semester 5 | TURK105 | TURKISH I | 0 | 5.0 |
+| Semester 5 | TURK201 | ELEMENTARY TURKISH I | 0 | 3.0 |
+| Semester 5 | TURK303 | TURKISH I | 0 | 2.0 |
+| Semester 6 | CENG334 | INTRODUCTION TO OPERATING SYSTEMS | 3 | 5.5 |
+| Semester 6 | CENG336 | INTRO.TO EMBEDDED SYSTEMS DEVELOPMENT | 3 | 5.5 |
+| Semester 6 | CENG350 | SOFTWARE ENGINEERING | 3 | 5.5 |
+| Semester 6 | CENG384 | SIGNALS AND SYSTEMS FOR COMPUTER ENGINEERS | 3 | 5.0 |
+| Semester 6 | TURK106 | TURKISH II | 0 | 5.0 |
+| Semester 6 | TURK202 | INTERMEDIATE TURKISH I | 0 | 3.0 |
+| Semester 6 | TURK304 | TURKISH II | 0 | 2.0 |
+| Semester 7 | CENG400 | SUMMER PRACTICE II | 0 | 5.0 |
+| Semester 7 | CENG477 | INTRODUCTION TO COMPUTER GRAPHICS | 3 | 6.0 |
+| Semester 7 | CENG491 | COMPUTER ENGINEERING DESIGN I | 4 | 7.0 |
+| Semester 8 | CENG492 | COMPUTER ENGINEERING DESIGN II | 4 | 7.0 |

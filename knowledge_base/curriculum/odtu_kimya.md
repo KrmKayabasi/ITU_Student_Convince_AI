@@ -1,0 +1,58 @@
+# ODTÜ (Orta Doğu Teknik Üniversitesi) — Chemical Engineering
+
+**Üniversite:** ODTÜ (Orta Doğu Teknik Üniversitesi) · **Bölüm:** Chemical Engineering · **Dil:** %100 İngilizce
+**Kaynak:** https://catalog.metu.edu.tr/program.php?fac_prog=563
+**Plan:** catalog fac_prog=563 · **Ders sayısı:** 50
+
+| Yarıyıl | Kod | Ders | Kredi | AKTS |
+|---|---|---|---|---|
+| Semester 1 | PHYS105 | GENERAL PHYSICS I | 4 | 6.0 |
+| Semester 1 | CHEM111 | GENERAL CHEMISTRY I | 4 | 6.0 |
+| Semester 1 | MATH119 | CALCULUS WITH ANALYTIC GEOMETRY | 5 | 7.0 |
+| Semester 1 | ME105 | COMPUTER AIDED ENGINEERING GRAPHICS | 3 | 5.0 |
+| Semester 1 | ENG101 | ENGLISH FOR ACADEMIC PURPOSES I | 4 | 6.0 |
+| Semester 1 | OHS101 | OCCUPATIONAL HEALTH AND SAFETY-I | 0 | 2.0 |
+| Semester 1 | IS100 | INTRODUCTION TO INFORMATION TECHNOLOGIES AND APPLICATIONS | 0 | 1.0 |
+| Semester 2 | PHYS106 | GENERAL PHYSICS II | 4 | 6.0 |
+| Semester 2 | CHEM112 | GENERAL CHEMISTRY II | 4 | 6.0 |
+| Semester 2 | MATH120 | CALCULUS OF FUNCTIONS OF SEVERAL VARIABLES | 5 | 7.5 |
+| Semester 2 | BA100 | CAREER PLANNING | 0 | 2.0 |
+| Semester 2 | CHE102 | INTRODUCTION TO CHEMICAL ENGINEERING | 1 | 1.0 |
+| Semester 2 | CENG240 | PROGRAMMING WITH PYTHON FOR ENGINEERS | 3 | 4.0 |
+| Semester 2 | ENG102 | ENGLISH FOR ACADEMIC PURPOSES II | 4 | 6.0 |
+| Semester 3 | CHEM220 | ORGANIC CHEMISTRY | 4 | 6.0 |
+| Semester 3 | MATH219 | INTRODUCTION TO DIFFERENTIAL EQUATIONS | 4 | 7.0 |
+| Semester 3 | CHE203 | CHEMICAL PROCESS CALCULATIONS | 4 | 7.0 |
+| Semester 3 | ENG211 | ACADEMIC SPEAKING SKILLS | 3 | 4.0 |
+| Semester 3 | OHS301 | OCCUPATIONAL HEALTH AND SAFETY - II | 0 | 2.0 |
+| Semester 3 | HIST2201 |  | 0 | 2.0 |
+| Semester 3 | HIST2205 | HISTORY OF THE TURKISH REVOLUTION I | 0 | 2.0 |
+| Semester 4 | CHEM230 | ANALYTICAL CHEMISTRY FOR ENGINEERS | 4 | 6.0 |
+| Semester 4 | ES361 | COMPUTING METHODS IN ENGINEERING | 3 | 5.0 |
+| Semester 4 | CHE204 | THERMODYNAMICS I | 4 | 7.0 |
+| Semester 4 | CHE222 | FLUID MECHANICS | 4 | 7.0 |
+| Semester 4 | METE230 | FUNDAMENTALS OF MATERIALS SCIENCE AND ENGINEERING | 3 | 5.0 |
+| Semester 4 | HIST2202 |  | 0 | 2.0 |
+| Semester 4 | HIST2206 | HISTORY OF THE TURKISH REVOLUTION II | 0 | 2.0 |
+| Semester 5 | CHEM353 | PHYSICAL CHEMISTRY II | 4 | 7.0 |
+| Semester 5 | ECON210 | PRINCIPLES OF ECONOMICS | 3 | 5.0 |
+| Semester 5 | CHE300 | SUMMER PRACTICE | 0 | 5.0 |
+| Semester 5 | CHE305 | THERMODYNAMICS II | 4 | 7.0 |
+| Semester 5 | CHE327 | HEAT & MASS TRANSFER OPERATIONS | 4 | 7.0 |
+| Semester 5 | TURK105 | TURKISH I | 0 | 5.0 |
+| Semester 5 | TURK201 | ELEMENTARY TURKISH I | 0 | 3.0 |
+| Semester 5 | TURK303 | TURKISH I | 0 | 2.0 |
+| Semester 6 | CHE311 | CHEMICAL REACTION ENGINEERING | 4 | 7.0 |
+| Semester 6 | CHE320 | CHEMICAL ENGINEERING LABORATORY I | 2 | 4.0 |
+| Semester 6 | CHE328 | SEPARATION PROCESSES | 4 | 7.0 |
+| Semester 6 | CHE352 | MATHEMATICAL MODELING IN CHEMICAL ENG. | 3 | 6.0 |
+| Semester 6 | TURK106 | TURKISH II | 0 | 5.0 |
+| Semester 6 | TURK202 | INTERMEDIATE TURKISH I | 0 | 3.0 |
+| Semester 6 | TURK304 | TURKISH II | 0 | 2.0 |
+| Semester 7 | CHE400 | SUMMER PRACTICE II | 0 | 5.0 |
+| Semester 7 | CHE407 | PROCESS CONTROL | 3 | 5.0 |
+| Semester 7 | CHE410 | CHEMICAL ENGINEERING LABORATORY II | 2 | 4.0 |
+| Semester 7 | CHE417 | CHEMICAL ENGINEERING DESIGN I | 4 | 7.0 |
+| Semester 7 | CHE423 | CHEMICAL ENGINEERING ECONOMICS | 3 | 3.5 |
+| Semester 8 | CHE418 | CHEMICAL ENGINEERING DESIGN II | 4 | 7.0 |
+| Semester 8 | CHE420 | CHEMICAL ENGINEERING LABORATORY III | 2 | 4.0 |

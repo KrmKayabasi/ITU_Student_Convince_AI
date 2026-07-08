@@ -1,0 +1,58 @@
+# ODTÜ (Orta Doğu Teknik Üniversitesi) — Environmental Engineering
+
+**Üniversite:** ODTÜ (Orta Doğu Teknik Üniversitesi) · **Bölüm:** Environmental Engineering · **Dil:** %100 İngilizce
+**Kaynak:** https://catalog.metu.edu.tr/program.php?fac_prog=560
+**Plan:** catalog fac_prog=560 · **Ders sayısı:** 50
+
+| Yarıyıl | Kod | Ders | Kredi | AKTS |
+|---|---|---|---|---|
+| Semester 1 | PHYS105 | GENERAL PHYSICS I | 4 | 6.0 |
+| Semester 1 | CHEM107 | GENERAL CHEMISTRY | 4 | 6.0 |
+| Semester 1 | MATH119 | CALCULUS WITH ANALYTIC GEOMETRY | 5 | 7.0 |
+| Semester 1 | ENVE101 | INTRODUCTION TO ENVIRONMENTAL ENG. | 2 | 3.0 |
+| Semester 1 | ENG101 | ENGLISH FOR ACADEMIC PURPOSES I | 4 | 6.0 |
+| Semester 1 | OHS101 | OCCUPATIONAL HEALTH AND SAFETY-I | 0 | 2.0 |
+| Semester 1 | IS100 | INTRODUCTION TO INFORMATION TECHNOLOGIES AND APPLICATIONS | 0 | 1.0 |
+| Semester 2 | PHYS106 | GENERAL PHYSICS II | 4 | 6.0 |
+| Semester 2 | MATH120 | CALCULUS OF FUNCTIONS OF SEVERAL VARIABLES | 5 | 7.5 |
+| Semester 2 | BA100 | CAREER PLANNING | 0 | 2.0 |
+| Semester 2 | ENVE102 | ENVIRONMENTAL CHEMISTRY I | 3 | 5.0 |
+| Semester 2 | CE101 | CIVIL ENGINEERING DRAWING | 3 | 4.0 |
+| Semester 2 | CENG240 | PROGRAMMING WITH PYTHON FOR ENGINEERS | 3 | 4.0 |
+| Semester 2 | ENG102 | ENGLISH FOR ACADEMIC PURPOSES II | 4 | 6.0 |
+| Semester 3 | CHEM229 | ORGANIC CHEMISTRY FOR ENGINEERS | 4 | 6.0 |
+| Semester 3 | MATH219 | INTRODUCTION TO DIFFERENTIAL EQUATIONS | 4 | 7.0 |
+| Semester 3 | ENVE201 | FUNDAMENTALS OF ENVIRONMENTAL ENG.PRO. | 3 | 5.0 |
+| Semester 3 | ENVE208 | ENVIRONMENTAL CHEMISTRY LABORATORY | 3 | 3.0 |
+| Semester 3 | ES223 | STATICS AND STRENGTH OF MATERIALS | 4 | 5.0 |
+| Semester 3 | ENG211 | ACADEMIC SPEAKING SKILLS | 3 | 4.0 |
+| Semester 3 | HIST2201 |  | 0 | 2.0 |
+| Semester 3 | HIST2205 | HISTORY OF THE TURKISH REVOLUTION I | 0 | 2.0 |
+| Semester 4 | ENVE202 | ENVIRONMENTAL MICROBIOLOGY | 4 | 6.0 |
+| Semester 4 | ENVE206 | PHYSICO-CHEMICAL PRIN.OF ENVIRON.ENG. | 3 | 5.0 |
+| Semester 4 | ENVE307 | AIR POLLUTION | 3 | 5.0 |
+| Semester 4 | ES303 | STATISTICAL METHODS FOR ENGINEERS | 3 | 5.0 |
+| Semester 4 | CHE204 | THERMODYNAMICS I | 4 | 7.0 |
+| Semester 4 | HIST2202 |  | 0 | 2.0 |
+| Semester 4 | HIST2206 | HISTORY OF THE TURKISH REVOLUTION II | 0 | 2.0 |
+| Semester 5 | ENVE300 | SUMMER PRACTICE I | 0 | 5.0 |
+| Semester 5 | ENVE303 | UNIT OP. & PROCES. OF WATER TREAT. | 3 | 6.0 |
+| Semester 5 | ENVE309 | FUNDAMENTALS OF BIOLOGICAL TREATMENT | 3 | 6.0 |
+| Semester 5 | CE374 | FLUID MECHANICS | 3 | 5.0 |
+| Semester 5 | CE375 | ENVIRONMENTAL ENGINEERING HYDROLOGY | 3 | 5.0 |
+| Semester 5 | OHS301 | OCCUPATIONAL HEALTH AND SAFETY - II | 0 | 2.0 |
+| Semester 5 | TURK105 | TURKISH I | 0 | 5.0 |
+| Semester 5 | TURK201 | ELEMENTARY TURKISH I | 0 | 3.0 |
+| Semester 5 | TURK303 | TURKISH I | 0 | 2.0 |
+| Semester 6 | ENVE304 | UNIT OP. & PROCES.OF WASTEWATER TREAT. | 3 | 6.0 |
+| Semester 6 | ENVE312 | WATER SUPPLY AND URBAN DRAINAGE | 3 | 6.0 |
+| Semester 6 | ENVE322 | TRANSPORT PROCESSES IN ENVIRONMENTAL ENGINEERING | 3 | 6.0 |
+| Semester 6 | ES361 | COMPUTING METHODS IN ENGINEERING | 3 | 5.0 |
+| Semester 6 | TURK106 | TURKISH II | 0 | 5.0 |
+| Semester 6 | TURK202 | INTERMEDIATE TURKISH I | 0 | 3.0 |
+| Semester 6 | TURK304 | TURKISH II | 0 | 2.0 |
+| Semester 7 | ENVE400 | SUMMER PRACTICE II | 0 | 5.0 |
+| Semester 7 | ENVE404 | ENVIRONMENTAL MODELING | 3 | 6.0 |
+| Semester 7 | ENVE407 | ENVIRONMENTAL ENGINEERING DESIGN I | 3 | 7.0 |
+| Semester 7 | ENVE412 | SOLID WASTE MANAGEMENT | 3 | 5.0 |
+| Semester 8 | ENVE408 | ENVIRONMENTAL ENGINEERING DESIGN II | 3 | 7.0 |

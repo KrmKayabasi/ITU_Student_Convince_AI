@@ -1,0 +1,61 @@
+# ODTÜ (Orta Doğu Teknik Üniversitesi) — Industrial Engineering
+
+**Üniversite:** ODTÜ (Orta Doğu Teknik Üniversitesi) · **Bölüm:** Industrial Engineering · **Dil:** %100 İngilizce
+**Kaynak:** https://catalog.metu.edu.tr/program.php?fac_prog=568
+**Plan:** catalog fac_prog=568 · **Ders sayısı:** 53
+
+| Yarıyıl | Kod | Ders | Kredi | AKTS |
+|---|---|---|---|---|
+| Semester 1 | PHYS105 | GENERAL PHYSICS I | 4 | 6.0 |
+| Semester 1 | CHEM107 | GENERAL CHEMISTRY | 4 | 6.0 |
+| Semester 1 | MATH119 | CALCULUS WITH ANALYTIC GEOMETRY | 5 | 7.0 |
+| Semester 1 | CENG240 | PROGRAMMING WITH PYTHON FOR ENGINEERS | 3 | 4.0 |
+| Semester 1 | ENG101 | ENGLISH FOR ACADEMIC PURPOSES I | 4 | 6.0 |
+| Semester 1 | OHS101 | OCCUPATIONAL HEALTH AND SAFETY-I | 0 | 2.0 |
+| Semester 1 | IS100 | INTRODUCTION TO INFORMATION TECHNOLOGIES AND APPLICATIONS | 0 | 1.0 |
+| Semester 2 | PHYS106 | GENERAL PHYSICS II | 4 | 6.0 |
+| Semester 2 | MATH120 | CALCULUS OF FUNCTIONS OF SEVERAL VARIABLES | 5 | 7.5 |
+| Semester 2 | MATH260 | BASIC LINEAR ALGEBRA | 3 | 5.0 |
+| Semester 2 | BA100 | CAREER PLANNING | 0 | 2.0 |
+| Semester 2 | IE102 | INDUSTRIAL ENGINEERING ORIENTATION | 2 | 2.0 |
+| Semester 2 | ME105 | COMPUTER AIDED ENGINEERING GRAPHICS | 3 | 5.0 |
+| Semester 2 | ENG102 | ENGLISH FOR ACADEMIC PURPOSES II | 4 | 6.0 |
+| Semester 3 | MATH219 | INTRODUCTION TO DIFFERENTIAL EQUATIONS | 4 | 7.0 |
+| Semester 3 | ECON211 | PRIN OF.ECONOMICS I | 3 | 6.0 |
+| Semester 3 | IE241 | FINANCIAL AND MANAGERIAL ACCOUNTING FOR ENGINEERS | 3 | 5.0 |
+| Semester 3 | IE251 | LINEAR PROGRAMMING | 3 | 5.0 |
+| Semester 3 | IE265 | INTRODUCTION TO PROBABILITY | 3 | 5.0 |
+| Semester 3 | ME212 | PRINCIPLES OF PRODUCTION ENGINEERING | 3 | 5.0 |
+| Semester 3 | HIST2201 |  | 0 | 2.0 |
+| Semester 3 | HIST2205 | HISTORY OF THE TURKISH REVOLUTION I | 0 | 2.0 |
+| Semester 4 | ECON212 | PRINCIPLES OF ECONOMICS II | 3 | 6.0 |
+| Semester 4 | IE252 | NETWORK FLOWS AND INTEGER PROGRAMMING | 3 | 5.0 |
+| Semester 4 | IE266 | ENGINEERING STATISTICS | 4 | 5.0 |
+| Semester 4 | METE230 | FUNDAMENTALS OF MATERIALS SCIENCE AND ENGINEERING | 3 | 5.0 |
+| Semester 4 | ENG211 | ACADEMIC SPEAKING SKILLS | 3 | 4.0 |
+| Semester 4 | OHS301 | OCCUPATIONAL HEALTH AND SAFETY - II | 0 | 2.0 |
+| Semester 4 | HIST2202 |  | 0 | 2.0 |
+| Semester 4 | HIST2206 | HISTORY OF THE TURKISH REVOLUTION II | 0 | 2.0 |
+| Semester 5 | EE381 | SYSTEMS AND CONTROL | 3 | 5.0 |
+| Semester 5 | IE300 | SUMMER PRACTICE I | 0 | 5.0 |
+| Semester 5 | IE323 | PRODUCTION AND SERVICE OPERATIONS PLANNING I | 3 | 5.0 |
+| Semester 5 | IE333 | WORK SYSTEMS ANALYSIS AND DESIGN | 3 | 5.0 |
+| Semester 5 | IE347 | ENGINEERING ECONOMY | 3 | 5.0 |
+| Semester 5 | IE361 | STOCHASTIC MODELS IN OPERATIONS RESEARCH | 3 | 5.0 |
+| Semester 5 | TURK105 | TURKISH I | 0 | 5.0 |
+| Semester 5 | TURK201 | ELEMENTARY TURKISH I | 0 | 3.0 |
+| Semester 5 | TURK303 | TURKISH I | 0 | 2.0 |
+| Semester 6 | IE304 | PRODUCTION AND SERVICE INFORMATION SYSTEMS | 3 | 5.0 |
+| Semester 6 | IE324 | PRODUCTION AND SERVICE OPERATIONS PLANNING II | 3 | 5.0 |
+| Semester 6 | IE368 | QUALITY PLANNING AND CONTROL | 3 | 5.0 |
+| Semester 6 | IE372 | SIMULATION | 3 | 5.0 |
+| Semester 6 | ME351 | THERMODYNAMICS OF HEAT POWER | 3 | 5.0 |
+| Semester 6 | TURK106 | TURKISH II | 0 | 5.0 |
+| Semester 6 | TURK202 | INTERMEDIATE TURKISH I | 0 | 3.0 |
+| Semester 6 | TURK304 | TURKISH II | 0 | 2.0 |
+| Semester 7 | IE400 | SUMMER PRACTICE II | 0 | 5.0 |
+| Semester 7 | IE404 | MANAGEMENT FOR ENGINEERS | 3 | 5.0 |
+| Semester 7 | IE422 | SEMINAR IN INDUSTRIAL ENGINEERING | 0 | 1.0 |
+| Semester 7 | IE489 | SYSTEMS THINKING | 3 | 5.0 |
+| Semester 7 | IE497 | SYSTEMS DESIGN I | 3 | 5.0 |
+| Semester 8 | IE498 | SYSTEMS DESIGN II | 3 | 5.0 |

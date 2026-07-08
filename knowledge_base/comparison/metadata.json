@@ -1,0 +1,280 @@
+{
+  "collection": "İTÜ Mühendislik — Üniversiteler-Arası Karşılaştırma (DAHİLİ)",
+  "note": "DAHİLİ kullanım — nötr, kaynaklı; PDF §4 gereği kötüleme yok, public bot'a doğrudan beslenmez. Ana knowledge_base/metadata.json'dan AYRIDIR. build: python3 comparison/build_metadata.py",
+  "version": "0.1",
+  "generated": "2026-07-08",
+  "language": "tr",
+  "schema": [
+    "id",
+    "category",
+    "source",
+    "verified",
+    "date",
+    "priority",
+    "audience_type",
+    "file",
+    "title"
+  ],
+  "stats": {
+    "total_chunks": 23,
+    "by_category": {
+      "karsilastirma": 23
+    },
+    "verified_true": 23
+  },
+  "chunks": [
+    {
+      "id": "comp-univ-qs-genel",
+      "category": "karsilastirma",
+      "source": "https://studyfans.com/en/news/turkish-universities-qs-world-ranking-2026",
+      "verified": true,
+      "date": "2026-06",
+      "priority": "high",
+      "audience_type": "internal",
+      "file": "processed/C01_universite_genel.md",
+      "title": "QS Dünya Sıralaması 2026 — Genel (5 üniversite)"
+    },
+    {
+      "id": "comp-univ-qs-muhtek",
+      "category": "karsilastirma",
+      "source": "https://haberler.itu.edu.tr/en/newsdetail/2025/03/12/proud-rise-in-qs-world-university-rankings-by-subject-2025-from-itu",
+      "verified": true,
+      "date": "2026-06",
+      "priority": "high",
+      "audience_type": "internal",
+      "file": "processed/C01_universite_genel.md",
+      "title": "QS Konu Sıralaması 2026 — Mühendislik & Teknoloji (5 üniversite)"
+    },
+    {
+      "id": "comp-univ-dil",
+      "category": "karsilastirma",
+      "source": "https://yokatlas.yok.gov.tr/lisans.php?y=105510608",
+      "verified": true,
+      "date": "2025-07",
+      "priority": "medium",
+      "audience_type": "internal",
+      "file": "processed/C01_universite_genel.md",
+      "title": "Eğitim Dili Karşılaştırması"
+    },
+    {
+      "id": "comp-univ-akreditasyon",
+      "category": "karsilastirma",
+      "source": "https://www.mudek.org.tr/en/akredit/",
+      "verified": true,
+      "date": "2025-07",
+      "priority": "high",
+      "audience_type": "internal",
+      "file": "processed/C01_universite_genel.md",
+      "title": "Akreditasyon Karşılaştırması (ABET / MÜDEK)"
+    },
+    {
+      "id": "comp-cs-taban",
+      "category": "karsilastirma",
+      "source": "https://tabanpuanlari.net/yks/uni/istanbul-teknik-universitesi",
+      "verified": true,
+      "date": "2025-08",
+      "priority": "high",
+      "audience_type": "internal",
+      "file": "processed/C02_bilgisayar_universiteler.md",
+      "title": "Bilgisayar Mühendisliği Taban Puanı & Başarı Sıralaması (5 üniversite, çok-yıl)"
+    },
+    {
+      "id": "comp-cs-koc-varyant",
+      "category": "karsilastirma",
+      "source": "https://www.epey.com/universite-tercih/koc-universitesi-bilgisayar-muhendisligi-203910363.html",
+      "verified": true,
+      "date": "2025-08",
+      "priority": "medium",
+      "audience_type": "internal",
+      "file": "processed/C02_bilgisayar_universiteler.md",
+      "title": "Koç Bilgisayar — Burs Türüne Göre Seçicilik (önemli nüans)"
+    },
+    {
+      "id": "comp-cs-qs",
+      "category": "karsilastirma",
+      "source": "https://haber.metu.edu.tr/en/2025/03/metu-becomes-the-best-turkish-university-in-14-subjects-in-qs-2025-rankings-by-subject/",
+      "verified": true,
+      "date": "2025-03",
+      "priority": "high",
+      "audience_type": "internal",
+      "file": "processed/C02_bilgisayar_universiteler.md",
+      "title": "Bilgisayar Bilimi Konu Sıralaması (QS / THE)"
+    },
+    {
+      "id": "comp-cs-akreditasyon-dil",
+      "category": "karsilastirma",
+      "source": "https://www.mudek.org.tr/en/akredit/",
+      "verified": true,
+      "date": "2025-07",
+      "priority": "medium",
+      "audience_type": "internal",
+      "file": "processed/C02_bilgisayar_universiteler.md",
+      "title": "Bilgisayar — Akreditasyon ve Dil (5 üniversite)"
+    },
+    {
+      "id": "comp-cs-mufredat",
+      "category": "karsilastirma",
+      "source": "curriculum/index.md",
+      "verified": true,
+      "date": "2025-07",
+      "priority": "low",
+      "audience_type": "internal",
+      "file": "processed/C02_bilgisayar_universiteler.md",
+      "title": "Bilgisayar — Müfredat Karşılaştırması (kaynak)"
+    },
+    {
+      "id": "comp-ic-siralama",
+      "category": "karsilastirma",
+      "source": "https://tabanpuanlari.net/yks/uni/istanbul-teknik-universitesi",
+      "verified": true,
+      "date": "2025-08",
+      "priority": "high",
+      "audience_type": "internal",
+      "file": "processed/C03_itu_ic_karsilastirma.md",
+      "title": "İTÜ Mühendislik Bölümleri — Seçicilik Sıralaması (2025, SAY)"
+    },
+    {
+      "id": "comp-ic-bilgisayar-1",
+      "category": "karsilastirma",
+      "source": "https://www.unirehberi.com/istanbul-teknik-universitesi-taban-puanlari/",
+      "verified": true,
+      "date": "2025-08",
+      "priority": "high",
+      "audience_type": "internal",
+      "file": "processed/C03_itu_ic_karsilastirma.md",
+      "title": "Bilgisayar, İTÜ'nün En Seçici Bölümü"
+    },
+    {
+      "id": "comp-ic-cs-yakin",
+      "category": "karsilastirma",
+      "source": "https://tabanpuanlari.net/yks/uni/istanbul-teknik-universitesi",
+      "verified": true,
+      "date": "2025-08",
+      "priority": "medium",
+      "audience_type": "internal",
+      "file": "processed/C03_itu_ic_karsilastirma.md",
+      "title": "Bilgisayar'a Yakın Alanlar İTÜ'de Güçlü"
+    },
+    {
+      "id": "comp-mat-genel",
+      "category": "karsilastirma",
+      "source": "comparison/raw_data/SOURCES.md",
+      "verified": true,
+      "date": "2025-07",
+      "priority": "high",
+      "audience_type": "internal",
+      "file": "processed/C04_bolum_matris.md",
+      "title": "Bölüm Varlık Matrisi (adı geçen 8 bölüm, 5 üniversite)"
+    },
+    {
+      "id": "comp-mat-elektrik",
+      "category": "karsilastirma",
+      "source": "https://ee.itu.edu.tr/",
+      "verified": true,
+      "date": "2025-07",
+      "priority": "medium",
+      "audience_type": "internal",
+      "file": "processed/C04_bolum_matris.md",
+      "title": "Elektrik / Elektronik-Haberleşme / Kontrol — Ayrık vs Birleşik"
+    },
+    {
+      "id": "comp-mat-yapayzeka",
+      "category": "karsilastirma",
+      "source": "https://yapayzeka.itu.edu.tr/",
+      "verified": true,
+      "date": "2025-07",
+      "priority": "high",
+      "audience_type": "internal",
+      "file": "processed/C04_bolum_matris.md",
+      "title": "Yapay Zeka ve Veri Mühendisliği — Sadece İTÜ ve YTÜ (lisans)"
+    },
+    {
+      "id": "comp-mat-siber",
+      "category": "karsilastirma",
+      "source": "https://siberguvenlik.itu.edu.tr/",
+      "verified": true,
+      "date": "2025-07",
+      "priority": "high",
+      "audience_type": "internal",
+      "file": "processed/C04_bolum_matris.md",
+      "title": "Siber Güvenlik Mühendisliği — Sadece İTÜ (lisans)"
+    },
+    {
+      "id": "comp-mat-havacilik",
+      "category": "karsilastirma",
+      "source": "https://uubf.itu.edu.tr/",
+      "verified": true,
+      "date": "2025-07",
+      "priority": "medium",
+      "audience_type": "internal",
+      "file": "processed/C04_bolum_matris.md",
+      "title": "Havacılık ve Uzay — Sadece İTÜ ve ODTÜ"
+    },
+    {
+      "id": "comp-mat-makine",
+      "category": "karsilastirma",
+      "source": "comparison/raw_data/SOURCES.md",
+      "verified": true,
+      "date": "2025-07",
+      "priority": "low",
+      "audience_type": "internal",
+      "file": "processed/C04_bolum_matris.md",
+      "title": "Makine ve Diğer Ortak Bölümler"
+    },
+    {
+      "id": "comp-yapi-ayrik-bolum",
+      "category": "karsilastirma",
+      "source": "https://ee.itu.edu.tr/",
+      "verified": true,
+      "date": "2025-07",
+      "priority": "high",
+      "audience_type": "internal",
+      "file": "processed/C05_itu_yapisal_avantajlar.md",
+      "title": "Ayrık Bölüm Yapısı — Erken Uzmanlaşma"
+    },
+    {
+      "id": "comp-yapi-bolum-genisligi",
+      "category": "karsilastirma",
+      "source": "https://ogrencifaaliyetleri.itu.edu.tr/teams",
+      "verified": true,
+      "date": "2025-07",
+      "priority": "high",
+      "audience_type": "internal",
+      "file": "processed/C05_itu_yapisal_avantajlar.md",
+      "title": "Bölüm ve Alan Genişliği"
+    },
+    {
+      "id": "comp-yapi-abet",
+      "category": "karsilastirma",
+      "source": "https://www.itu.edu.tr/akreditasyon",
+      "verified": true,
+      "date": "2025-07",
+      "priority": "medium",
+      "audience_type": "internal",
+      "file": "processed/C05_itu_yapisal_avantajlar.md",
+      "title": "Akreditasyon Genişliği"
+    },
+    {
+      "id": "comp-yapi-ekosistem",
+      "category": "karsilastirma",
+      "source": "https://itucekirdek.com/en/about-us/",
+      "verified": true,
+      "date": "2025-07",
+      "priority": "high",
+      "audience_type": "internal",
+      "file": "processed/C05_itu_yapisal_avantajlar.md",
+      "title": "Girişim ve Proje Ekosistemi"
+    },
+    {
+      "id": "comp-yapi-ozet-durust",
+      "category": "karsilastirma",
+      "source": "https://studyfans.com/en/news/turkish-universities-qs-world-ranking-2026",
+      "verified": true,
+      "date": "2026-06",
+      "priority": "high",
+      "audience_type": "internal",
+      "file": "processed/C05_itu_yapisal_avantajlar.md",
+      "title": "Dürüst Özet — İTÜ Nerede Önde, Nerede Başabaş"
+    }
+  ]
+}
