@@ -29,6 +29,15 @@ import httpx
 from urllib.parse import urlparse
 
 from PyQt6.QtCore import Qt, QTimer, QProcess
+
+# Monkey-patch torch.load to default weights_only=False to support pyannote/speechbrain models in PyTorch 2.6
+import torch
+_orig_torch_load = torch.load
+def _patched_torch_load(*args, **kwargs):
+    if "weights_only" not in kwargs:
+        kwargs["weights_only"] = False
+    return _orig_torch_load(*args, **kwargs)
+torch.load = _patched_torch_load
 from PyQt6.QtGui import QImage, QPixmap
 from PyQt6.QtWidgets import (
     QApplication,
