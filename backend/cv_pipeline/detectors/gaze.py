@@ -52,8 +52,18 @@ def _clip01(x: float) -> float:
 
 
 def compute_eye_contact(blendshapes: Dict[str, float], head_pose: HeadPose) -> GazeResult:
-    blink = _clip01(sum(blendshapes.get(k, 0.0) for k in _EYE_BLINK_KEYS) / len(_EYE_BLINK_KEYS))
-    deviation = sum(blendshapes.get(k, 0.0) for k in _EYE_LOOK_KEYS) / len(_EYE_LOOK_KEYS)
+    # Unrolled lookups to eliminate generator/iteration overhead in hot VAD/eye contact calculation loops
+    blink = _clip01((blendshapes.get("eyeBlinkLeft", 0.0) + blendshapes.get("eyeBlinkRight", 0.0)) * 0.5)
+    deviation = (
+        blendshapes.get("eyeLookInLeft", 0.0)
+        + blendshapes.get("eyeLookInRight", 0.0)
+        + blendshapes.get("eyeLookOutLeft", 0.0)
+        + blendshapes.get("eyeLookOutRight", 0.0)
+        + blendshapes.get("eyeLookUpLeft", 0.0)
+        + blendshapes.get("eyeLookUpRight", 0.0)
+        + blendshapes.get("eyeLookDownLeft", 0.0)
+        + blendshapes.get("eyeLookDownRight", 0.0)
+    ) * 0.125
     deviation_centeredness = _clip01(1.0 - deviation / config.GAZE_EYE_DEVIATION_SCALE)
     # Kirpma yari kapali/gecis karelerinde de eyeLook* sapmasini bozar; sert
     # bir esik yerine blink skoruyla orantili yumusatma yapariz (blink=1 ->

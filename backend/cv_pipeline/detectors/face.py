@@ -36,9 +36,16 @@ class FaceResult:
 
 
 def _bbox_from_landmarks(landmarks) -> Tuple[float, float, float, float]:
-    xs = [lm.x for lm in landmarks]
-    ys = [lm.y for lm in landmarks]
-    return (min(xs), min(ys), max(xs), max(ys))
+    # Single-pass loop avoiding list comprehension memory allocations on hot paths (468 landmarks)
+    xmin = ymin = float('inf')
+    xmax = ymax = float('-inf')
+    for lm in landmarks:
+        x, y = lm.x, lm.y
+        if x < xmin: xmin = x
+        if x > xmax: xmax = x
+        if y < ymin: ymin = y
+        if y > ymax: ymax = y
+    return (xmin, ymin, xmax, ymax)
 
 
 def head_pose_from_matrix(matrix: np.ndarray) -> HeadPose:

@@ -39,21 +39,28 @@ def select_primary_face(
     if not faces:
         return None
 
-    largest = max(faces, key=lambda f: _bbox_area(f.bbox))
+    # Cache area and center calculations to avoid multiple redundant recalculations per frame
+    face_metrics = {}
+    for f in faces:
+        area = _bbox_area(f.bbox)
+        center = _bbox_center(f.bbox)
+        face_metrics[id(f)] = (area, center)
+
+    largest = max(faces, key=lambda f: face_metrics[id(f)][0])
     if previous_center is None:
         return largest
 
-    largest_area = _bbox_area(largest.bbox)
+    largest_area = face_metrics[id(largest)][0]
     candidates = [
         f
         for f in faces
-        if math.dist(_bbox_center(f.bbox), previous_center) < config.PRIMARY_PERSON_CONTINUITY_RADIUS
+        if math.dist(face_metrics[id(f)][1], previous_center) < config.PRIMARY_PERSON_CONTINUITY_RADIUS
     ]
     if not candidates:
         return largest
 
-    continuity_pick = max(candidates, key=lambda f: _bbox_area(f.bbox))
-    if _bbox_area(continuity_pick.bbox) >= largest_area * config.PRIMARY_PERSON_CONTINUITY_AREA_RATIO:
+    continuity_pick = max(candidates, key=lambda f: face_metrics[id(f)][0])
+    if face_metrics[id(continuity_pick)][0] >= largest_area * config.PRIMARY_PERSON_CONTINUITY_AREA_RATIO:
         return continuity_pick
     return largest
 
