@@ -206,6 +206,9 @@ class OfflineTTSHandler:
         # Replace soft g (ğ/Ğ) with g/G to prevent the TTS engine from saying "yumuşak ge"
         text = text.replace("ğ", "g").replace("Ğ", "G")
         
+        # Replace dotless ı/I with dotted i/İ to bypass espeak-ng spelling-out (heceleme) bugs
+        text = text.replace("ı", "i").replace("I", "İ")
+        
         # Replace symbols with words
         symbols = {
             "&": " ve ",
