@@ -203,6 +203,9 @@ class OfflineTTSHandler:
         # Clean markdown characters to prevent literal pronunciation (e.g. asterisks as "yıldız")
         text = text.replace("*", "").replace("_", "").replace("#", "").replace("`", "")
         
+        # Clean quotes and apostrophes to prevent word splitting or character reading (e.g. Günleri'ne -> Günlerine)
+        text = text.replace("'", "").replace('"', "").replace("”", "").replace("“", "").replace("’", "")
+        
         # Replace soft g (ğ/Ğ) with g/G to prevent the TTS engine from saying "yumuşak ge"
         text = text.replace("ğ", "g").replace("Ğ", "G")
         
