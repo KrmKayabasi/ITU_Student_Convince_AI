@@ -1,6 +1,13 @@
 # Integrated Speech-to-Speech Server (NVIDIA H200 Multi-GPU)
 
 import os
+
+# Monkey patch transformers to bypass PyTorch 2.6 requirements for vision causal masks
+try:
+    import transformers.masking_utils
+    transformers.masking_utils._is_torch_greater_or_equal_than_2_6 = True
+except ImportError:
+    pass
 import secrets
 import uvicorn
 from fastapi import FastAPI, Request, HTTPException, Depends
