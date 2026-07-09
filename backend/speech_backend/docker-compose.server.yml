@@ -13,6 +13,7 @@ services:
       - PORT=8002
       - MODEL_ID=google/gemma-4-12b-it
       - QUANTIZATION=none
+      - CUDA_VISIBLE_DEVICES=1
     deploy:
       resources:
         reservations:
