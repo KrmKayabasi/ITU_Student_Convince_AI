@@ -25,6 +25,7 @@ try:
 except ImportError:
     pass
 import secrets
+import asyncio
 import uvicorn
 from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.responses import StreamingResponse
@@ -213,7 +214,7 @@ async def chat_stream(request: Request, _auth=Depends(_verify_auth)):
             # ── Step B: Synthesize the ENTIRE response at once ─────────────
             print(f"[Server] Synthesizing TTS...", flush=True)
             tts_start = time.time()
-            tts_audio, sample_rate = tts.synthesize(response_text)
+            tts_audio, sample_rate = await asyncio.to_thread(tts.synthesize, response_text)
             tts_elapsed = time.time() - tts_start
 
             if tts_audio is None or len(tts_audio) == 0:
