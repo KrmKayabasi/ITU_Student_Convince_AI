@@ -15,7 +15,8 @@ RUN pip install --no-cache-dir \
     soundfile \
     transformers \
     accelerate \
-    sounddevice
+    sounddevice \
+    sherpa-onnx
 
 # Copy speech server source code and assets
 COPY . /workspace/
