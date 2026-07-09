@@ -123,13 +123,18 @@ class SignalExtractor:
         self._pose = PoseLandmarkerWrapper()
         self._emotion_worker = EmotionWorker(session_id)
         self._emotion_worker.start()
-        self._last_ts_ms = 0
+        self._timestamp_counter = 0
         self._previous_face_center: Optional[Tuple[float, float]] = None
 
     def _next_timestamp_ms(self) -> int:
-        now_ms = int(time.monotonic() * 1000)
-        self._last_ts_ms = max(self._last_ts_ms + 1, now_ms)
-        return self._last_ts_ms
+        """Monotonically increasing millisecond counter for MediaPipe VIDEO mode.
+
+        MediaPipe requires strictly increasing timestamps per detection call.
+        We use a simple counter rather than time.monotonic() because the latter
+        has an undefined reference point and may not advance on system sleep.
+        """
+        self._timestamp_counter += 1
+        return self._timestamp_counter
 
     def extract(self, frame: Optional[np.ndarray]) -> RawSignals:
         if frame is None or frame.size == 0:

@@ -10,7 +10,7 @@ from transformers import AutoProcessor, AutoModelForMultimodalLM, TrainingArgume
 from peft import LoraConfig, get_peft_model
 
 class TurkishSpeechDataset(Dataset):
-    def __init__(self, manifest_path, dataset_type='yodas'):
+    def __init__(self, manifest_path, dataset_type='yodas', audio_root=None):
         self.dataset_type = dataset_type
         self.items = []
         with open(manifest_path, 'r', encoding='utf-8') as f:
@@ -26,10 +26,19 @@ class TurkishSpeechDataset(Dataset):
                         continue
                     audio_path = item['audio']
                     filename = os.path.basename(audio_path)
-                    if dataset_type == 'yodas':
-                        true_path = f'/home/yigit/speech-data/yodas2_tr/yodas2_tr/clips/{filename}'
+                    # Resolve audio path: use --audio-root if given, else derive from manifest.
+                    if audio_root:
+                        true_path = os.path.join(audio_root, filename)
+                    elif dataset_type == 'yodas':
+                        true_path = os.path.join(
+                            os.path.dirname(manifest_path), 'clips', filename
+                        )
+                    elif dataset_type == 'worldspeech':
+                        true_path = os.path.join(
+                            os.path.dirname(manifest_path), 'clips', filename
+                        )
                     else:
-                        true_path = f'/home/yigit/speech-data/worldspeech_tr/worldspeech_tr/clips/{filename}'
+                        true_path = audio_path  # fallback: use path as-is from manifest
                     self.items.append({
                         'id': item['id'],
                         'audio_path': true_path,
@@ -97,6 +106,8 @@ def train():
     parser.add_argument('--model_id', type=str, default='google/gemma-4-12B-it')
     parser.add_argument('--manifest_path', type=str, default='/home/yigit/speech-data/yodas2_tr/yodas2_tr/manifest_tr000.jsonl')
     parser.add_argument('--dataset_type', type=str, default='yodas')
+    parser.add_argument('--audio-root', type=str, default=None,
+                        help='Root directory containing audio clip files (overrides manifest-relative path)')
     parser.add_argument('--output_dir', type=str, default='./checkpoints_turkish_gemma')
     parser.add_argument('--epochs', type=int, default=2)
     parser.add_argument('--batch_size', type=int, default=4)
@@ -134,7 +145,7 @@ def train():
         param.requires_grad = True
 
     model.print_trainable_parameters()
-    dataset = TurkishSpeechDataset(args.manifest_path, args.dataset_type)
+    dataset = TurkishSpeechDataset(args.manifest_path, args.dataset_type, audio_root=args.audio_root)
     collator = MultimodalCollator(processor)
 
     training_args = TrainingArguments(

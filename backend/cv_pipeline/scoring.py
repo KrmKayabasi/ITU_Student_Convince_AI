@@ -30,6 +30,46 @@ _EMOTION_ENERGY = {
     "contempt": 0.45,
 }
 
+# ── Dynamic confidence computation ───────────────────────────────────────────
+# Instead of hardcoding confidence values, we compute them from the available
+# data so they reflect actual measurement quality.
+
+
+def _lean_confidence(lean_history: list) -> float:
+    """Confidence rises with sample count (sigmoid-like ramp)."""
+    if not lean_history:
+        return 0.0
+    n = len(lean_history)
+    return round(min(1.0, n / (n + 6.0)), 2)
+
+
+def _eye_contact_confidence(head_yaw_deg) -> float:
+    """High when head pose data is present, moderate otherwise."""
+    return 0.9 if head_yaw_deg is not None else 0.5
+
+
+def _spine_confidence(spine_ratio, shoulder_tilt) -> float:
+    """Spine confidence reflects the physical plausibility of the measurement."""
+    if spine_ratio is None or shoulder_tilt is None:
+        return 0.0
+    base = 0.7
+    if not (0.0 <= (spine_ratio or 0) <= 1.25):
+        base -= 0.3
+    if (shoulder_tilt or 0) > 0.5:
+        base -= 0.2
+    return round(max(0.1, base), 2)
+
+
+def _emotion_confidence(emotion_scores: dict) -> float:
+    """Confidence is higher when the dominant emotion clearly outperforms the runner-up."""
+    if not emotion_scores:
+        return 0.0
+    values = sorted(emotion_scores.values(), reverse=True)
+    if len(values) < 2:
+        return 0.3
+    margin = (values[0] - values[1]) / (values[0] + 1e-6)
+    return round(max(0.15, min(0.85, 0.3 + margin * 0.7)), 2)
+
 
 def _update_focus(session: SessionData, raw: RawSignals, now: float) -> None:
     """Odaklanma, her karede guncellenir (T-focus): dikkat dagilinca aninda
@@ -152,17 +192,17 @@ def build_initial_profile(session: SessionData) -> dict:
             "lean": {
                 "value": round(delta_lean, 4),
                 "baseline": round(session.baseline_lean or 0.0, 4),
-                "confidence": 0.8 if session.lean_history else 0.0,
+                "confidence": _lean_confidence(list(session.lean_history)),
             },
             "eye_contact": {
                 "value": round(avg_eye_contact, 4),
                 "head_yaw_deg": raw.head_yaw_deg,
-                "confidence": 0.9 if raw.head_yaw_deg is not None else 0.5,
+                "confidence": _eye_contact_confidence(raw.head_yaw_deg),
             },
             "spine": {
                 "ratio": raw.spine_ratio,
                 "tilt": raw.shoulder_tilt,
-                "confidence": 0.7,
+                "confidence": _spine_confidence(raw.spine_ratio, raw.shoulder_tilt),
             },
             "arms_crossed": {
                 "value": bool(raw.arms_crossed) if arms_valid else False,
@@ -171,7 +211,7 @@ def build_initial_profile(session: SessionData) -> dict:
             "emotion": {
                 "dominant": raw.emotion_label,
                 "scores": raw.emotion_scores,
-                "confidence": 0.55,
+                "confidence": _emotion_confidence(raw.emotion_scores),
             },
         },
         "scores": {

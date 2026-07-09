@@ -1,7 +1,10 @@
 import os
 
 # Server endpoint on H200
-SERVER_URL = "http://192.168.2.9:8000/chat_stream"
+SERVER_URL = os.environ.get("SPEECH_SERVER_URL", "http://192.168.2.9:8000/chat_stream")
+
+# Auth token — set SPEECH_SERVER_TOKEN in the environment to match the server
+AUTH_TOKEN = os.environ.get("SPEECH_SERVER_TOKEN", "")
 
 # Local Audio Settings
 SAMPLE_RATE = 16000  # VAD and recording rate (Hz)
@@ -13,4 +16,4 @@ SILENCE_DURATION = 0.45  # Seconds of silence before user finishes speaking (hig
 MIN_SPEECH_DURATION = 0.15  # Minimum duration to register speech (fast onset)
 
 # Interruption settings
-INTERRUPTION_MODE = "both"  # "both", "key_only", "vad_only", "none"
+INTERRUPTION_MODE = os.environ.get("INTERRUPTION_MODE", "both")  # "both", "key_only", "vad_only", "none"

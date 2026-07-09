@@ -39,7 +39,11 @@ def select_primary_face(
     if not faces:
         return None
 
-    # Cache area and center calculations to avoid multiple redundant recalculations per frame
+    # Cache area and center calculations to avoid multiple redundant recalculations per frame.
+    # Use id(f) as the key: FaceResult is a dataclass containing a numpy ndarray
+    # (transform_matrix), which makes it unhashable.  id(f) is safe here because the
+    # objects are created fresh each frame and CPython guarantees unique non-recycled ids
+    # within the lifetime of a single frame's processing.
     face_metrics = {}
     for f in faces:
         area = _bbox_area(f.bbox)

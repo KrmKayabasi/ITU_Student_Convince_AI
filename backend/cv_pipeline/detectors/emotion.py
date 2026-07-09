@@ -11,6 +11,7 @@ sonucu üretmeden önce son bilinen değer korunur, crash olmaz.
 from __future__ import annotations
 
 import threading
+import logging
 import time
 from typing import Dict, Optional, Tuple
 
@@ -19,6 +20,8 @@ import numpy as np
 import onnxruntime as ort
 
 from backend.cv_pipeline import config
+
+logger = logging.getLogger("cv-pipeline.emotion")
 
 # 8-sinif AffectNet siniflandirmasi (enet_b0_8_*): sirasi ONNX cikis
 # indeksleriyle birebir eslesir (bkz. EmotiEffLib facial_analysis.py).
@@ -106,6 +109,7 @@ class EmotionWorker:
             return self._label, dict(self._scores)
 
     def _run(self) -> None:
+        consecutive_errors = 0
         while self._running:
             with self._lock:
                 crop = self._latest_crop
@@ -118,8 +122,23 @@ class EmotionWorker:
                 with self._lock:
                     self._label = label
                     self._scores = scores
+                consecutive_errors = 0
             except Exception:
-                pass  # son bilinen deger korunur; worker crash olup dusmez
+                consecutive_errors += 1
+                logger.warning(
+                    "emotion inference failed (consecutive=%d, session=%s)",
+                    consecutive_errors, self.session_id, exc_info=True,
+                )
+                # After 5 consecutive failures, reset to neutral default to avoid
+                # serving stale predictions from a previous person indefinitely.
+                if consecutive_errors >= 5:
+                    with self._lock:
+                        self._label = "neutral"
+                        self._scores = {"neutral": 1.0}
+                    logger.error(
+                        "emotion worker reset to neutral after %d consecutive failures (session=%s)",
+                        consecutive_errors, self.session_id,
+                    )
             time.sleep(self._interval)
 
     def stop(self) -> None:

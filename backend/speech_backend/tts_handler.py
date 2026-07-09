@@ -13,57 +13,87 @@ class OfflineTTSHandler:
         if self.use_xtts:
             print("[TTS] Çevrimdışı Coqui XTTS v2 yükleniyor...", flush=True)
             start_time = time.time()
-            
-            # Transformers v5 compatibility patches for Coqui TTS
+
+            # Transformers v5 compatibility patches for Coqui TTS.
+            # All monkey-patches are scoped: originals are restored after model load
+            # to avoid corrupting other libraries that depend on torch.load safety.
             import torch
-            # Patch torch.load for compatibility in PyTorch 2.6+
-            original_load = torch.load
-            def custom_load(*args, **kwargs):
-                if 'weights_only' not in kwargs:
-                    kwargs['weights_only'] = False
-                return original_load(*args, **kwargs)
-            torch.load = custom_load
-            
+            _original_torch_load = torch.load
+
+            def _patched_load(*args, **kwargs):
+                kwargs.setdefault('weights_only', False)
+                return _original_torch_load(*args, **kwargs)
+
+            torch.load = _patched_load
+
+            # Track monkey-patches so we can restore them in finally block
+            _restore_ops = []
+
             try:
                 import transformers
                 from transformers.utils.import_utils import _LazyModule
-                
-                # Store original getattr and hook in custom resolver
-                original_getattr = _LazyModule.__getattr__
-                def custom_getattr(self, name):
-                    if name in ('BeamSearchScorer', 'ConstrainedBeamSearchScorer', 'DisjunctiveConstraint', 'PhrasalConstraint'):
-                        class Dummy: pass
-                        return Dummy
-                    return original_getattr(self, name)
-                _LazyModule.__getattr__ = custom_getattr
-                
+
+                _original_getattr = _LazyModule.__getattr__
+                def _patched_getattr(self, name):
+                    if name in ('BeamSearchScorer', 'ConstrainedBeamSearchScorer',
+                                'DisjunctiveConstraint', 'PhrasalConstraint'):
+                        class _Dummy: pass
+                        return _Dummy
+                    return _original_getattr(self, name)
+                _LazyModule.__getattr__ = _patched_getattr
+                _restore_ops.append(
+                    lambda: setattr(_LazyModule, '__getattr__', _original_getattr)
+                )
+
                 # Inject generation utils mocks for deprecated classes in v5
                 import transformers.generation.utils
-                class Dummy: pass
+                class _Dummy: pass
+                _restored_gen_utils = {}
                 if not hasattr(transformers.generation.utils, 'SampleOutput'):
-                    transformers.generation.utils.SampleOutput = Dummy
+                    transformers.generation.utils.SampleOutput = _Dummy
+                    _restored_gen_utils['SampleOutput'] = True
                 if not hasattr(transformers.generation.utils, 'GenerateOutput'):
-                    transformers.generation.utils.GenerateOutput = Dummy
-                
+                    transformers.generation.utils.GenerateOutput = _Dummy
+                    _restored_gen_utils['GenerateOutput'] = True
+
                 # Patch GPT2InferenceModel bases for transformers v5 compatibility
                 from transformers import GenerationMixin
                 import TTS.tts.layers.xtts.gpt_inference as gpt_inf
-                if GenerationMixin not in gpt_inf.GPT2InferenceModel.__bases__:
-                    gpt_inf.GPT2InferenceModel.__bases__ = gpt_inf.GPT2InferenceModel.__bases__ + (GenerationMixin,)
-                
+                _original_bases = gpt_inf.GPT2InferenceModel.__bases__
+                if GenerationMixin not in _original_bases:
+                    gpt_inf.GPT2InferenceModel.__bases__ = _original_bases + (GenerationMixin,)
+                    _restore_ops.append(
+                        lambda: setattr(gpt_inf.GPT2InferenceModel, '__bases__', _original_bases)
+                    )
+
                 from TTS.api import TTS
             except ImportError as e:
                 raise ImportError(f"[TTS Error] Coqui TTS veya dependencies yüklü değil: {e}")
-                
+
             # Load model on MPS if requested and available, else fallback to CPU
             try:
-                self.tts = TTS("tts_models/multilingual/multi-dataset/xtts_v2").to(self.device)
-                print(f"[TTS] XTTS Model {self.device} üzerinde {time.time() - start_time:.2f} saniyede başarıyla yüklendi.", flush=True)
-            except Exception as e:
-                print(f"[TTS Warning] {self.device} üzerinde yükleme başarısız ({e}). CPU'ya geçiliyor...", flush=True)
-                self.device = "cpu"
-                self.tts = TTS("tts_models/multilingual/multi-dataset/xtts_v2").to("cpu")
-                print(f"[TTS] XTTS Model CPU üzerinde {time.time() - start_time:.2f} saniyede yüklendi.", flush=True)
+                try:
+                    self.tts = TTS("tts_models/multilingual/multi-dataset/xtts_v2").to(self.device)
+                    print(f"[TTS] XTTS Model {self.device} üzerinde {time.time() - start_time:.2f} saniyede başarıyla yüklendi.", flush=True)
+                except Exception as e:
+                    print(f"[TTS Warning] {self.device} üzerinde yükleme başarısız ({e}). CPU'ya geçiliyor...", flush=True)
+                    self.device = "cpu"
+                    self.tts = TTS("tts_models/multilingual/multi-dataset/xtts_v2").to("cpu")
+                    print(f"[TTS] XTTS Model CPU üzerinde {time.time() - start_time:.2f} saniyede yüklendi.", flush=True)
+            finally:
+                # Restore all monkey-patches so other libraries are unaffected
+                torch.load = _original_torch_load
+                for op in _restore_ops:
+                    try:
+                        op()
+                    except Exception:
+                        pass
+                # Clean up injected mock classes
+                for attr_name in _restored_gen_utils:
+                    try:
+                        delattr(transformers.generation.utils, attr_name)
+                    except Exception:
+                        pass
                 
         else:
             # Check if model_id points to a sherpa-onnx local model directory

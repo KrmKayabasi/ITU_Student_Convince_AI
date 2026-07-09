@@ -1,5 +1,6 @@
 import sys
 import time
+import numpy as np
 from config import (
     MODEL_ID, QUANTIZATION, TTS_MODEL_ID, DEVICE,
     SYSTEM_INSTRUCTION, SAMPLE_RATE, CHANNELS,
@@ -88,15 +89,22 @@ def main():
 
             # 2. Gemma 4 Inference
             print("[Düşünüyor] Modeli çalıştırıyorum...", flush=True)
-            
-            # Deşifre (Transcribe user audio to update text history)
-            asr_res = asr(audio_data)
-            user_text = asr_res.get("text", "").strip()
-            if user_text:
-                print(f"[Kullanıcı]: {user_text}", flush=True)
+
+            # Deşifre (Transcribe user audio to update text history).
+            # Silence check prevents Whisper from hallucinating Turkish text from
+            # near-silent input (matching the guard in server.py).
+            rms = float(np.sqrt(np.mean(audio_data**2))) if len(audio_data) > 0 else 0.0
+            if rms < 0.005:
+                print(f"[Pipeline] Silence detected (RMS={rms:.5f}). Bypassing ASR.", flush=True)
+                user_text = ""
             else:
-                user_text = "[Kullanıcı anlaşılmayan bir ses çıkardı]"
-                print("[Kullanıcı]: (Ses deşifre edilemedi)", flush=True)
+                asr_res = asr(audio_data)
+                user_text = asr_res.get("text", "").strip()
+                if user_text:
+                    print(f"[Kullanıcı]: {user_text}", flush=True)
+                else:
+                    user_text = "[Kullanıcı anlaşılmayan bir ses çıkardı]"
+                    print("[Kullanıcı]: (Ses deşifre edilemedi)", flush=True)
             
             # Build current messages list
             prompt_system = SYSTEM_INSTRUCTION

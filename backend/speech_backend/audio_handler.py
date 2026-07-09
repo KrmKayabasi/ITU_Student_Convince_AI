@@ -7,10 +7,14 @@ import io
 import os
 import urllib.request
 import ssl
+import hashlib
 import sherpa_onnx
 import select
 import sys
 from pywebrtc_audio import AudioProcessor
+
+# Known SHA-256 hash for silero_vad.onnx to verify model integrity.
+_SILERO_VAD_SHA256 = "9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6"
 
 class AudioHandler:
     def __init__(self, sample_rate=16000, channels=1, energy_threshold=1.5, silence_duration=0.8, min_speech_duration=0.3, interruption_mode="both"):
@@ -31,10 +35,15 @@ class AudioHandler:
         if not os.path.exists(model_path):
             print("[VAD] silero_vad.onnx model dosyası indiriliyor...", flush=True)
             url = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx"
-            ctx = ssl._create_unverified_context()
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-            with urllib.request.urlopen(req, context=ctx) as response, open(model_path, 'wb') as out_file:
-                out_file.write(response.read())
+            with urllib.request.urlopen(req) as response, open(model_path, 'wb') as out_file:
+                data = response.read()
+                out_file.write(data)
+            # Verify integrity of the downloaded model
+            actual_hash = hashlib.sha256(data).hexdigest()
+            expected_hash = _SILERO_VAD_SHA256
+            if actual_hash != expected_hash:
+                print(f"[VAD WARNING] Model hash mismatch — expected {expected_hash[:16]}..., got {actual_hash[:16]}...", flush=True)
             print("[VAD] Model dosyası başarıyla indirildi.", flush=True)
             
         config = sherpa_onnx.VadModelConfig()
@@ -434,5 +443,19 @@ class AudioHandler:
         return False, None
 
     def close(self):
-        pass
+        """Release audio resources: clear queues and reset VAD state."""
+        # Drain audio queue to unblock any waiting consumers
+        while not self.audio_queue.empty():
+            try:
+                self.audio_queue.get_nowait()
+            except queue.Empty:
+                break
+        # Reset VAD detectors to release internal buffers
+        try:
+            self.vad.reset()
+            self.vad_playback.reset()
+        except Exception:
+            pass
+        # Release WebRTC audio processor if active
+        self.ap = None
 

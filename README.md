@@ -25,7 +25,7 @@ cd /Users/baydogan/Documents/ComputerScience/Projects/ITU_Student_Convince_AI
 ---
 
 ### Step 2: Start the Gemma 12B Speech Server
-The voice assistant runs natively on your machine to access GPU acceleration (making it answer you instantly). Open a **new terminal tab or window** and run:
+The voice assistant (integrated directly inside this repository under `backend/speech_backend/`) runs natively on your machine to access GPU acceleration (making it answer you instantly). Open a **new terminal tab or window** and run:
 
 ```bash
 # 1. Navigate to the project folder

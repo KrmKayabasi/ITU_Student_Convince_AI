@@ -1,26 +1,34 @@
 import os
+import sys
 
 # --- MODEL CONFIGURATION ---
-# Gemma 4 models: "google/gemma-4-e2b-it" or "google/gemma-4-e4b-it"
-MODEL_ID = os.environ.get("GEMMA_MODEL_ID", "google/gemma-4-e4b-it")
+# Gemma 4 models: "google/gemma-4-e2b-it", "google/gemma-4-e4b-it", "google/gemma-4-12B-it"
+# The server deployment uses a larger model; override via GEMMA_MODEL_ID env var.
+_DEFAULT_MODEL = "google/gemma-4-12B-it" if os.environ.get("SPEECH_SERVER_MODE") else "google/gemma-4-e4b-it"
+MODEL_ID = os.environ.get("GEMMA_MODEL_ID", _DEFAULT_MODEL)
 
 # Quantization: "none", "int4", or "int8"
-# Note: "int4" and "int8" require `optimum-quanto`
 QUANTIZATION = os.environ.get("GEMMA_QUANTIZATION", "none")
 
 # Disable chain-of-thought thinking to reduce latency (essential for real-time speech)
-ENABLE_THINKING = False
+ENABLE_THINKING = os.environ.get("ENABLE_THINKING", "0") == "1"
 
 # Text-to-Speech Model Config
-TTS_MODEL_ID = os.path.join(os.path.dirname(__file__), "vits-piper-tr_TR-dfki-medium")
+TTS_MODEL_ID = os.environ.get(
+    "TTS_MODEL_ID",
+    os.path.join(os.path.dirname(__file__), "vits-piper-tr_TR-dfki-medium"),
+)
 
-# Device configuration: "mps" (Mac GPU), "cuda", or "cpu"
-DEVICE = os.environ.get("DEVICE", "mps")
+# Device configuration: "mps" (Mac GPU), "cuda", or "cpu".
+# Auto-detect CUDA availability for server deployments.
+_DEVICE_DEFAULT = "cuda" if (not sys.platform == "darwin") else "mps"
+DEVICE = os.environ.get("DEVICE", _DEVICE_DEFAULT)
 
-sys_prompt_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "SYSTEM_PROMPT.md"))
-if os.path.exists(sys_prompt_path):
-    with open(sys_prompt_path, 'r', encoding='utf-8') as f:
-        SYSTEM_INSTRUCTION = f.read().strip()
+# System prompt — loaded from file in the project root, with a fallback.
+_sys_prompt_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "SYSTEM_PROMPT.md"))
+if os.path.exists(_sys_prompt_path):
+    with open(_sys_prompt_path, 'r', encoding='utf-8') as _f:
+        SYSTEM_INSTRUCTION = _f.read().strip()
 else:
     SYSTEM_INSTRUCTION = (
         "Sen yararlı bir Türkçe sesli asistansın. "
@@ -29,28 +37,23 @@ else:
     )
 
 # --- AUDIO CONFIGURATION ---
-SAMPLE_RATE = 16000  # Gemma 4 audio and MMS-TTS both work natively/best at 16kHz
+SAMPLE_RATE = 16000  # Gemma 4 audio and TTS both work natively at 16kHz
 CHANNELS = 1         # Mono-channel audio is required
 
-# Chunk size for sounddevice stream reading
-CHUNK_SIZE = 1024
-
 # Voice Activity Detection (VAD) config
-# ENERGY_THRESHOLD is the RMS multiplier of the background noise level to detect speech
 ENERGY_THRESHOLD = 2.5
-
-# Silence duration (seconds) before triggering the generation
 SILENCE_DURATION = 0.8
-
-# Pre-speech threshold (how long speech must last to be considered valid, in seconds)
 MIN_SPEECH_DURATION = 0.3
 
-# Use manual Press-to-Talk instead of automatic VAD (much more robust)
+# Use manual Press-to-Talk instead of automatic VAD
 PUSH_TO_TALK = False
 
 # Interruption mode during assistant playback
-# Options: 
-#   "both"     -> Can interrupt by either speaking (VAD) or pressing Enter key (requires headphones or low volume for VAD)
-#   "key_only" -> Can only interrupt by pressing Enter key (100% immune to speaker echo/feedback)
+#   "both"     -> Can interrupt by either speaking (VAD) or pressing Enter key
+#   "key_only" -> Can only interrupt by pressing Enter key (immune to speaker echo)
 #   "none"     -> Interruption disabled
-PLAYBACK_INTERRUPTION_MODE = "both"
+PLAYBACK_INTERRUPTION_MODE = os.environ.get("PLAYBACK_INTERRUPTION_MODE", "both")
+
+# --- SERVER ---
+SERVER_PORT = int(os.environ.get("SPEECH_SERVER_PORT", "8002"))
+SERVER_HOST = os.environ.get("SPEECH_SERVER_HOST", "0.0.0.0")

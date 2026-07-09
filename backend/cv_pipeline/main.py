@@ -26,15 +26,24 @@ from __future__ import annotations
 
 import os
 import sys
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
+import secrets
+
+# Ensure the project root is on sys.path so that `backend.cv_pipeline.*`
+# imports resolve regardless of the working directory.  Prefer running with
+# `PYTHONPATH=.` or `pip install -e .`, but this fallback keeps things
+# working when launched from any directory inside the repo.
+_PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
 
 import asyncio
 import logging
-from typing import Dict
+from typing import Dict, Optional
 
 import cv2
 import numpy as np
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
+from starlette.websockets import WebSocketClose
 
 from backend.cv_pipeline import config
 from backend.cv_pipeline.manager import session_manager
@@ -45,6 +54,22 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("cv-pipeline")
 
 app = FastAPI(title="ITU CV Description Pipeline")
+
+# ── Auth ─────────────────────────────────────────────────────────────────────
+# Optional token-based auth for WebSocket endpoints.  Set CV_PIPELINE_TOKEN in
+# the environment to enable; if unset all endpoints are open (dev mode).
+_AUTH_TOKEN = os.environ.get("CV_PIPELINE_TOKEN", "")
+_AUTH_ENABLED = bool(_AUTH_TOKEN)
+
+
+def _verify_ws_token(websocket: WebSocket, token: Optional[str]) -> bool:
+    """WebSocket-safe auth check.  Returns True if the token is valid or auth is
+    disabled.  When False, the caller should close the socket with code 4001."""
+    if not _AUTH_ENABLED:
+        return True
+    if token is None:
+        return False
+    return secrets.compare_digest(token, _AUTH_TOKEN)
 
 # session_id -> FrameSlot  (her kiosk'un kendi "son kare" kutusu)
 frame_slots: Dict[str, FrameSlot] = {}
@@ -205,11 +230,14 @@ def _ensure_worker_running(session_id: str) -> None:
 
 
 @app.websocket("/stream/{session_id}")
-async def stream_ingest(websocket: WebSocket, session_id: str):
+async def stream_ingest(websocket: WebSocket, session_id: str, token: str = Query(None)):
     """Istemci (robot) buraya JPEG-encoded binary frame'ler push eder.
     Servis her zaman en guncel kareyi tutar; islemeye yetismeyen eski
     kareler bilerek dusurulur (drop-stale), kuyruklama yapilmaz."""
     await websocket.accept()
+    if not _verify_ws_token(websocket, token):
+        await websocket.close(code=4001, reason="Invalid token")
+        return
     session_manager.get_or_create(session_id)
     slot = _get_frame_slot(session_id)
     _ensure_worker_running(session_id)
@@ -234,15 +262,17 @@ async def stream_ingest(websocket: WebSocket, session_id: str):
 
 
 @app.websocket("/profile/{session_id}")
-async def profile_push(websocket: WebSocket, session_id: str):
+async def profile_push(websocket: WebSocket, session_id: str, token: str = Query(None)):
     """LLM tarafi buraya baglanir; kisi basina tek seferlik zengin profil
     JSON'u, yeterli veri toplanir toplanmaz otomatik push edilir."""
     await websocket.accept()
+    if not _verify_ws_token(websocket, token):
+        await websocket.close(code=4001, reason="Invalid token")
+        return
     profile_subscribers.setdefault(session_id, set()).add(websocket)
     logger.info("profile subscriber connected: %s", session_id)
     try:
         while True:
-            # Bu kanal tek yonlu (server->client); baglanti acik kalsin diye bekliyoruz.
             await websocket.receive_text()
     except WebSocketDisconnect:
         pass
@@ -252,9 +282,12 @@ async def profile_push(websocket: WebSocket, session_id: str):
 
 
 @app.websocket("/focus/{session_id}")
-async def focus_push(websocket: WebSocket, session_id: str):
+async def focus_push(websocket: WebSocket, session_id: str, token: str = Query(None)):
     """Her ~2.5sn'de guncel is_focused + focus_time push edilir."""
     await websocket.accept()
+    if not _verify_ws_token(websocket, token):
+        await websocket.close(code=4001, reason="Invalid token")
+        return
     focus_subscribers.setdefault(session_id, set()).add(websocket)
     logger.info("focus subscriber connected: %s", session_id)
     try:
@@ -268,10 +301,13 @@ async def focus_push(websocket: WebSocket, session_id: str):
 
 
 @app.websocket("/debug/{session_id}")
-async def debug_push(websocket: WebSocket, session_id: str):
+async def debug_push(websocket: WebSocket, session_id: str, token: str = Query(None)):
     """SADECE gelistirme/test amacli: her ~0.3sn'de anlik ham+turetilmis tum
     degerleri push eder (uretim kontratinin disinda, bkz. build_debug_payload)."""
     await websocket.accept()
+    if not _verify_ws_token(websocket, token):
+        await websocket.close(code=4001, reason="Invalid token")
+        return
     debug_subscribers.setdefault(session_id, set()).add(websocket)
     logger.info("debug subscriber connected: %s", session_id)
     try:

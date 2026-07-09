@@ -1,20 +1,40 @@
-import os
-# Force server process to bind exclusively to one GPU (GPU 0)
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+# Integrated Speech-to-Speech Server (NVIDIA H200 Multi-GPU)
 
+import os
+import secrets
 import uvicorn
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.responses import StreamingResponse
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import numpy as np
 import time
 import torch
 from transformers import pipeline
 
-from server_config import HOST, PORT, MODEL_ID, QUANTIZATION, DEVICE, ENABLE_THINKING, TTS_MODEL_ID, SYSTEM_INSTRUCTION
+from config import SERVER_HOST as HOST, SERVER_PORT as PORT, MODEL_ID, QUANTIZATION, DEVICE, ENABLE_THINKING, TTS_MODEL_ID, SYSTEM_INSTRUCTION
 from model_handler import GemmaAudioProcessor
 from tts_handler import OfflineTTSHandler
 
 app = FastAPI(title="Turkish Speech-to-Speech Server (NVIDIA H200)")
+
+# ── Auth ─────────────────────────────────────────────────────────────────────
+# Token-based authentication.  Set SPEECH_SERVER_TOKEN in the environment to
+# enable; if unset, the server runs without auth (dev mode).
+_AUTH_TOKEN = os.environ.get("SPEECH_SERVER_TOKEN", "")
+_AUTH_ENABLED = bool(_AUTH_TOKEN)
+_security = HTTPBearer(auto_error=False)
+
+
+def _verify_auth(credentials: HTTPAuthorizationCredentials | None = Depends(_security)):
+    """FastAPI dependency: raises 401 if auth is enabled and the token is missing
+    or doesn't match the configured SPEECH_SERVER_TOKEN."""
+    if not _AUTH_ENABLED:
+        return
+    if credentials is None:
+        raise HTTPException(status_code=401, detail="Authorization header required")
+    if not secrets.compare_digest(credentials.credentials, _AUTH_TOKEN):
+        raise HTTPException(status_code=401, detail="Invalid token")
+
 
 # Global handlers (initialized on startup)
 gemma = None
@@ -63,14 +83,14 @@ chat_history = []
 MAX_HISTORY_TURNS = 20
 
 @app.post("/reset")
-def reset_conversation():
+def reset_conversation(_auth=Depends(_verify_auth)):
     global chat_history
     chat_history = []
     print("[Server] Conversation history reset!", flush=True)
     return {"status": "reset"}
 
 @app.get("/last_turn")
-def get_last_turn():
+def get_last_turn(_auth=Depends(_verify_auth)):
     global chat_history
     if len(chat_history) >= 2:
         return {
@@ -80,7 +100,7 @@ def get_last_turn():
     return {"user": "", "assistant": ""}
 
 @app.post("/chat_stream")
-async def chat_stream(request: Request):
+async def chat_stream(request: Request, _auth=Depends(_verify_auth)):
     """
     Receives raw PCM float32 16kHz mono audio from client,
     transcribes it on the fly using Whisper ASR on GPU,
@@ -119,10 +139,17 @@ async def chat_stream(request: Request):
     user_content = user_transcribed_text if user_transcribed_text else "[Kullanıcı anlaşılmayan bir ses gönderdi]"
     chat_history.append({"role": "user", "content": user_content})
     
-    # Enforce history limit (sliding window of last 20 turns of text history)
+    # Enforce history limit (sliding window of last 20 turns of text history).
+    # pop(1) shifts the list, so we must pop index 1 twice (not 1 then 2),
+    # but ONLY when indices [1] and [2] are the user+assistant pair after
+    # index 0 (system prompt).  Guard with an explicit check.
     while len(chat_history) > 1 + 2 * MAX_HISTORY_TURNS:
-        chat_history.pop(1)  # Remove oldest user message
-        chat_history.pop(1)  # Remove oldest assistant response
+        # Remove the oldest user+assistant pair (indices 1 and 2 after system prompt)
+        if len(chat_history) >= 3:
+            chat_history.pop(1)  # oldest user  (now index 1 is the old assistant)
+            chat_history.pop(1)  # oldest assistant (shifted into index 1)
+        else:
+            break
         
     # 3. Run Cascaded LLM-to-TTS Streaming
     async def cascaded_audio_generator():
@@ -188,5 +215,18 @@ async def chat_stream(request: Request):
         headers=headers
     )
 
+
+@app.get("/health")
+async def health():
+    """Liveness/readiness probe — intentionally excludes auth so monitoring
+    tools and the desktop client's status poller work without a token."""
+    return {
+        "status": "ok",
+        "auth_enabled": _AUTH_ENABLED,
+        "model": MODEL_ID,
+    }
+
+
 if __name__ == "__main__":
+    print(f"[Server] Auth {'enabled' if _AUTH_ENABLED else 'DISABLED (dev mode)'}", flush=True)
     uvicorn.run("server:app", host=HOST, port=PORT, log_level="info")

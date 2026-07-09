@@ -3,8 +3,15 @@ import time
 import httpx
 import numpy as np
 
-from client_config import SERVER_URL, SAMPLE_RATE, CHANNELS, BLOCKSIZE, SILENCE_DURATION, MIN_SPEECH_DURATION, INTERRUPTION_MODE
+from client_config import SERVER_URL, AUTH_TOKEN, SAMPLE_RATE, CHANNELS, BLOCKSIZE, SILENCE_DURATION, MIN_SPEECH_DURATION, INTERRUPTION_MODE
 from audio_handler import AudioHandler
+
+def _make_headers() -> dict:
+    """Build auth headers if a token is configured."""
+    headers = {}
+    if AUTH_TOKEN:
+        headers["Authorization"] = f"Bearer {AUTH_TOKEN}"
+    return headers
 
 def main():
     print("=" * 60)
@@ -31,7 +38,7 @@ def main():
     # Reset conversation history on remote server on startup
     reset_url = SERVER_URL.replace("/chat_stream", "/reset")
     try:
-        httpx.post(reset_url, timeout=5.0)
+        httpx.post(reset_url, timeout=5.0, headers=_make_headers())
         print("[İstemci] Sunucu konuşma geçmişi temizlendi.", flush=True)
     except Exception as e:
         print(f"[İstemci Uyarı] Sunucu geçmişi sıfırlanamadı: {e}", flush=True)
@@ -65,7 +72,8 @@ def main():
                 ttfa = 0.0
                 first_chunk_received = False
                 
-                with httpx.stream("POST", SERVER_URL, content=audio_bytes, timeout=15.0) as r:
+                with httpx.stream("POST", SERVER_URL, content=audio_bytes, timeout=15.0,
+                                  headers=_make_headers()) as r:
                     r.raise_for_status()
                     
                     # Read metadata from server headers

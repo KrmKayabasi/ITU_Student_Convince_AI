@@ -10,6 +10,13 @@ import numpy as np
 # Platform Detection
 IS_MAC = sys.platform == "darwin"
 
+
+def _clean_special_tokens(text: str) -> str:
+    """Strip structural tokens from generated text (used across all generation paths)."""
+    text = re.sub(r'<\|.*?\|>', '', text)
+    text = re.sub(r'<[^>]+>', '', text)
+    return text.strip()
+
 class GemmaAudioProcessor:
     def __init__(self, model_id="google/gemma-4-e2b-it", quantization="none", device="mps", enable_thinking=False):
         self.model_id = model_id
@@ -93,33 +100,26 @@ class GemmaAudioProcessor:
         
         if IS_MAC:
             # --- MAC MPS PATH: INFERENCE VIA MLX-VLM ---
-            # Save raw numpy audio array to a temporary WAV file (near zero latency in-memory write)
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_wav:
-                # Convert float32 [-1, 1] range to int16 PCM
+            # mlx-vlm currently requires a file path for audio input.
+            # We keep the tempfile alive during inference and clean up immediately
+            # afterward via the context manager (delete=True, the default).
+            from mlx_vlm import generate
+            start_time = time.time()
+            response_text = None
+
+            with tempfile.NamedTemporaryFile(suffix=".wav") as temp_wav:
                 pcm_audio = (audio_data * 32767).astype(np.int16)
                 wav.write(temp_wav.name, 16000, pcm_audio)
-                temp_wav_path = temp_wav.name
-                
-            start_time = time.time()
-            from mlx_vlm import generate
-            
-            try:
-                # Run MLX-VLM generation
-                # We disable sampling for maximum speed (greedy decode) and set max_tokens=60
+                temp_wav.flush()
                 response_text = generate(
                     self.model,
                     self.processor,
                     prompt,
-                    audio=[temp_wav_path],
+                    audio=[temp_wav.name],
                     max_tokens=1024,
-                    verbose=False
+                    verbose=False,
                 )
-            finally:
-                # Clean up the temporary file immediately
-                try:
-                    os.unlink(temp_wav_path)
-                except Exception:
-                    pass
+            # temp_wav is auto-deleted when the with-block exits
             
             # Extract plain text if GenerationResult object is returned by mlx_vlm
             if hasattr(response_text, "text"):
@@ -172,18 +172,13 @@ class GemmaAudioProcessor:
             thinking_content = parts[0].strip()
             final_response = parts[1].strip()
             
-        # Helper to strip structural tokens
-        def clean_special_tokens(text):
-            text = re.sub(r'<\|.*?\|>', '', text)
-            text = re.sub(r'<[^>]+>', '', text)
-            return text.strip()
-            
-        thinking_content = clean_special_tokens(thinking_content)
+        # Parse the thinking channel output using the module-level helper
+        thinking_content = _clean_special_tokens(thinking_content)
         if thinking_content.startswith("thought"):
             thinking_content = thinking_content[7:].strip()
-            
-        final_response = clean_special_tokens(final_response)
-        
+
+        final_response = _clean_special_tokens(final_response)
+
         return thinking_content, final_response
 
     def generate_response_with_history(self, messages, audio_list):
@@ -256,18 +251,13 @@ class GemmaAudioProcessor:
             thinking_content = parts[0].strip()
             final_response = parts[1].strip()
             
-        # Helper to strip structural tokens
-        def clean_special_tokens(text):
-            text = re.sub(r'<\|.*?\|>', '', text)
-            text = re.sub(r'<[^>]+>', '', text)
-            return text.strip()
-            
-        thinking_content = clean_special_tokens(thinking_content)
+        # Parse the thinking channel output using the module-level helper
+        thinking_content = _clean_special_tokens(thinking_content)
         if thinking_content.startswith("thought"):
             thinking_content = thinking_content[7:].strip()
-            
-        final_response = clean_special_tokens(final_response)
-        
+
+        final_response = _clean_special_tokens(final_response)
+
         return thinking_content, final_response
 
     def generate_response_stream(self, messages, audio_list):
