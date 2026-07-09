@@ -41,11 +41,11 @@ The system is designed around a **decoupled, low-latency native architecture** c
     *   **Offline Speaker Diarisation**: Once speech ends, the client runs the **DiariZen Pipeline** (utilizing WavLM and PyAnote audio) inside a background thread to identify the specific speaker ID (Speaker 0, Speaker 1, etc.).
     *   **Direct Server Playout**: Streams audio bytes from the host-native Gemma 12B server and plays them back using a background output stream at 24000 Hz.
 
-### 3. Cascaded Speech Server (`Turkish_Speech_to_Speech`)
+### 3. Integrated Cascaded Speech Server (`backend/speech_backend/`)
 *   **Role**: Natural voice conversation interface.
 *   **Technologies**: Transformers, MLX (Apple Silicon) / PyTorch CUDA, Piper VITS (Sherpa-onnx), OpenAI Whisper.
 *   **Components**:
-    *   **Automatic Speech Recognition (ASR)**: Whisper-tiny transcribes user speech.
+    *   **Automatic Speech Recognition (ASR)**: Whisper Large v3 Turbo transcribes user speech.
     *   **Large Language Model (LLM)**: Gemma 4 12B generates replies.
     *   **Text-to-Speech (TTS)**: Piper VITS synthesizes voice output.
 
