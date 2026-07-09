@@ -377,13 +377,14 @@ class StreamWorker(QThread):
     focus_ready = pyqtSignal(dict)
 
     def __init__(self, server: str, session_id: str, camera_index: int, fps: float,
-                 auth_token=None):
+                 auth_token=None, cap=None):
         super().__init__()
         self.server = server
         self.session_id = session_id
         self.camera_index = camera_index
         self.fps = fps
         self.auth_token = auth_token
+        self.cap = cap
         self._stop_event = threading.Event()
 
     def stop(self) -> None:
@@ -394,7 +395,9 @@ class StreamWorker(QThread):
         import websockets
 
         async def main_loop():
-            cap = cv2.VideoCapture(self.camera_index)
+            cap = self.cap
+            if cap is None:
+                cap = cv2.VideoCapture(self.camera_index)
             if not cap.isOpened():
                 print(f"[CV Error] Camera index {self.camera_index} cannot be opened.")
                 return

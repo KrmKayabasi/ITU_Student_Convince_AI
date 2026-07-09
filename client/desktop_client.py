@@ -277,10 +277,13 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central)
         self.setStyleSheet(DARK_THEME)
 
+        # Initialize video capture on the main GUI thread to comply with macOS AVFoundation restrictions
+        self.cap = cv2.VideoCapture(args.camera_index)
+
         # CV stream worker
         self.worker = StreamWorker(
             args.server, args.session_id, args.camera_index, args.fps,
-            auth_token=args.auth_token,
+            auth_token=args.auth_token, cap=self.cap
         )
         self.worker.frame_ready.connect(self._on_frame)
         self.worker.debug_ready.connect(self._on_debug)
@@ -581,6 +584,8 @@ class MainWindow(QMainWindow):
         self.audio_worker.wait(2000)
         self.worker.stop()
         self.worker.wait(2000)
+        if hasattr(self, "cap") and self.cap:
+            self.cap.release()
         event.accept()
 
 
