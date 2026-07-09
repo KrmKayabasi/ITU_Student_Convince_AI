@@ -21,6 +21,7 @@ RUN pip install --no-cache-dir \
 # Install torchaudio and Coqui TTS while preserving NGC CUDA/PyTorch packages
 RUN git clone --depth 1 --branch v2.5.0 https://github.com/pytorch/audio.git /tmp/torchaudio && \
     cd /tmp/torchaudio && \
+    sed -i '1s/^/#include <cfloat>\n/' src/libtorchaudio/cuctc/src/ctc_prefix_decoder_kernel_v2.cu && \
     git submodule update --init --recursive && \
     pip install --no-cache-dir --no-build-isolation --no-deps . && \
     rm -rf /tmp/torchaudio
