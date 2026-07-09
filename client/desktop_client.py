@@ -96,7 +96,7 @@ class AudioCaptureWorker(QThread):
 
         # Load Silero VAD for voice activity boundary detection
         import sherpa_onnx
-        vad_model_path = "/Users/baydogan/Documents/ComputerScience/Projects/Turkish_Speech_to_Speech/cascaded_architecture/silero_vad.onnx"
+        vad_model_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "backend", "speech_backend", "silero_vad.onnx"))
         if not os.path.exists(vad_model_path):
             for p in ["silero_vad.onnx", "../silero_vad.onnx", "../../silero_vad.onnx", "../../../silero_vad.onnx"]:
                 if os.path.exists(p):
