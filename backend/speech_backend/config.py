@@ -2,10 +2,10 @@ import os
 import sys
 
 # --- MODEL CONFIGURATION ---
-# Gemma 4 models: "google/gemma-4-e2b-it", "google/gemma-4-e4b-it", "google/gemma-4-12B-it"
-# The server deployment uses a larger model; override via GEMMA_MODEL_ID env var.
-_DEFAULT_MODEL = "google/gemma-4-12B-it" if os.environ.get("SPEECH_SERVER_MODE") else "google/gemma-4-e4b-it"
-MODEL_ID = os.environ.get("GEMMA_MODEL_ID", _DEFAULT_MODEL)
+# Gemma 4 models: "google/gemma-4-e2b-it", "google/gemma-4-e4b-it", "google/gemma-4-12b-it"
+# The server deployment uses a larger model; override via GEMMA_MODEL_ID or MODEL_ID env vars.
+_DEFAULT_MODEL = "google/gemma-4-12b-it" if os.environ.get("SPEECH_SERVER_MODE") else "google/gemma-4-e4b-it"
+MODEL_ID = os.environ.get("GEMMA_MODEL_ID", os.environ.get("MODEL_ID", _DEFAULT_MODEL))
 
 # Quantization: "none", "int4", or "int8"
 QUANTIZATION = os.environ.get("GEMMA_QUANTIZATION", "none")
@@ -16,7 +16,7 @@ ENABLE_THINKING = os.environ.get("ENABLE_THINKING", "0") == "1"
 # Text-to-Speech Model Config
 TTS_MODEL_ID = os.environ.get(
     "TTS_MODEL_ID",
-    os.path.join(os.path.dirname(__file__), "vits-piper-tr_TR-fettah-medium"),
+    os.path.join(os.path.dirname(__file__), "vits-piper-tr_TR-fahrettin-medium"),
 )
 
 # Device configuration: "mps" (Mac GPU), "cuda", or "cpu".
@@ -24,8 +24,11 @@ TTS_MODEL_ID = os.environ.get(
 _DEVICE_DEFAULT = "cuda" if (not sys.platform == "darwin") else "mps"
 DEVICE = os.environ.get("DEVICE", _DEVICE_DEFAULT)
 
-# System prompt — loaded from file in the project root, with a fallback.
-_sys_prompt_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "SYSTEM_PROMPT.md"))
+# System prompt — loaded from file in the local directory (Docker context) or project root (local fallback).
+_sys_prompt_path_local = os.path.join(os.path.dirname(__file__), "SYSTEM_PROMPT.md")
+_sys_prompt_path_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "SYSTEM_PROMPT.md"))
+_sys_prompt_path = _sys_prompt_path_local if os.path.exists(_sys_prompt_path_local) else _sys_prompt_path_root
+
 if os.path.exists(_sys_prompt_path):
     with open(_sys_prompt_path, 'r', encoding='utf-8') as _f:
         SYSTEM_INSTRUCTION = _f.read().strip()
