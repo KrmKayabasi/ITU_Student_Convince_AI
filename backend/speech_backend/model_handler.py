@@ -45,7 +45,7 @@ class GemmaAudioProcessor:
             print(f"[Model] CUDA için PyTorch backend yükleniyor: {self.model_id}...", flush=True)
             start_time = time.time()
             
-            from transformers import AutoProcessor, AutoModelForMultimodalLM
+            from transformers import AutoProcessor, AutoModel
             self.processor = AutoProcessor.from_pretrained(self.model_id)
             
             # Setup CUDA optimized quantization
@@ -66,7 +66,7 @@ class GemmaAudioProcessor:
                 quantization_config = BitsAndBytesConfig(load_in_8bit=True)
             
             # Load PyTorch model mapping automatically to GPU
-            self.model = AutoModelForMultimodalLM.from_pretrained(
+            self.model = AutoModel.from_pretrained(
                 self.model_id,
                 quantization_config=quantization_config,
                 torch_dtype=torch_dtype,
