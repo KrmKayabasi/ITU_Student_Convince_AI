@@ -57,6 +57,9 @@ class OfflineTTSHandler:
             try:
                 import transformers
                 from transformers.utils.import_utils import _LazyModule
+                import transformers.pytorch_utils
+                if not hasattr(transformers.pytorch_utils, 'isin_mps_friendly'):
+                    transformers.pytorch_utils.isin_mps_friendly = lambda x, y: x.isin(y)
 
                 _original_getattr = _LazyModule.__getattr__
                 def _patched_getattr(self, name):
@@ -245,9 +248,11 @@ class OfflineTTSHandler:
         elif self.use_xtts:
             # Generate via Coqui XTTS v2
             try:
+                # Resolve speaker_wav relative to this file's directory
+                _speaker_wav = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fahrettin_test.wav")
                 wav = self.tts.tts(
                     text=clean_text,
-                    speaker_wav="fahrettin_test.wav",
+                    speaker_wav=_speaker_wav,
                     language="tr"
                 )
                 waveform = np.array(wav, dtype=np.float32)
