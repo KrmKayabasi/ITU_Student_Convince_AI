@@ -9,3 +9,9 @@ venv/
 models/*.task
 models/*.onnx
 .DS_Store
+*.wav
+*.ogg
+*.msgpack
+*.mp3
+.idea/
+.vscode/

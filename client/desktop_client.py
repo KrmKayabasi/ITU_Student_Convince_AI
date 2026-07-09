@@ -24,6 +24,10 @@ import cv2
 import httpx
 import sounddevice as sd
 import scipy.io.wavfile as wav
+import soundfile as sf
+import torch
+from collections import deque
+from urllib.parse import urlparse
 
 from PyQt6.QtCore import QUrl, Qt, QThread, pyqtSignal, QProcess, QTimer
 from PyQt6.QtGui import QImage, QPixmap, QFont
@@ -115,7 +119,6 @@ class AudioCaptureWorker(QThread):
         self.is_active = False
 
     def run(self):
-        from collections import deque
         pre_roll = deque(maxlen=20)  # 400ms pre-speech frames
         self.vad.reset()
 
@@ -123,6 +126,21 @@ class AudioCaptureWorker(QThread):
             if not self.is_active:
                 raise sd.CallbackAbort()
             samples = indata[:, 0].copy()
+
+            # Prevent memory overflow: if speech exceeds 45s, stop and emit
+            if self.is_recording and len(self.buffer) * 320 >= 16000 * 45:
+                self.is_recording = False
+                self.speech_stopped.emit()
+                if self.buffer:
+                    if pre_roll:
+                        pr_samples = np.concatenate(list(pre_roll))
+                        full_audio = np.concatenate([pr_samples, np.concatenate(self.buffer)])
+                    else:
+                        full_audio = np.concatenate(self.buffer)
+                    self.audio_recorded.emit(full_audio)
+                self.buffer = []
+                self.vad.reset()
+                return
 
             if self.use_vad:
                 self.vad.accept_waveform(samples)
@@ -229,14 +247,14 @@ class ResponseGeneratorWorker(QThread):
                 outdata[:, 0] = 0
 
         # Create output playback stream matching server output (24000 Hz)
-        play_stream = sd.OutputStream(
-            samplerate=24000,
-            channels=1,
-            callback=play_callback,
-            blocksize=512
-        )
-
+        play_stream = None
         try:
+            play_stream = sd.OutputStream(
+                samplerate=24000,
+                channels=1,
+                callback=play_callback,
+                blocksize=512
+            )
             play_stream.start()
 
             # Stream playout chunk-by-chunk from speech server POST request
@@ -247,7 +265,7 @@ class ResponseGeneratorWorker(QThread):
                     content=self.audio_data.tobytes()
                 ) as response:
                     if response.status_code != 200:
-                        self.status_changed.emit("Server Error!")
+                        self.status_changed.emit("Server Error (Idle)")
                         return
                     
                     self.status_changed.emit("Speaking...")
@@ -266,9 +284,14 @@ class ResponseGeneratorWorker(QThread):
 
         except Exception as e:
             print(f"[Speech Playout Error] Streaming failed: {e}", flush=True)
+            self.status_changed.emit("Idle (Connection Error)")
         finally:
-            play_stream.stop()
-            play_stream.close()
+            if play_stream:
+                try:
+                    play_stream.stop()
+                    play_stream.close()
+                except Exception:
+                    pass
 
         # 3. Retrieve response texts from `/last_turn`
         if not self.is_interrupted:
@@ -693,7 +716,7 @@ class MainWindow(QMainWindow):
     def _on_interrupt(self):
         if self.active_worker and self.active_worker.isRunning():
             self.active_worker.interrupt()
-            self.active_worker.wait(1000)
+            self.active_worker.wait(50)
             self.lbl_status.setText("Status: Idle")
 
     # Webcam and CV data callbacks
