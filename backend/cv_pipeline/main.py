@@ -132,7 +132,7 @@ async def _profile_trigger_loop(session_id: str) -> None:
 
             subscribers = profile_subscribers.get(session_id, set())
             dead = []
-            for ws in subscribers:
+            for ws in list(subscribers):
                 try:
                     await ws.send_json(profile)
                 except Exception:
@@ -157,7 +157,7 @@ async def _focus_emit_loop(session_id: str) -> None:
 
             subscribers = focus_subscribers.get(session_id, set())
             dead = []
-            for ws in subscribers:
+            for ws in list(subscribers):
                 try:
                     await ws.send_json(payload)
                 except Exception:
@@ -183,7 +183,7 @@ async def _debug_emit_loop(session_id: str) -> None:
 
             subscribers = debug_subscribers.get(session_id, set())
             dead = []
-            for ws in subscribers:
+            for ws in list(subscribers):
                 try:
                     await ws.send_json(payload)
                 except Exception:
