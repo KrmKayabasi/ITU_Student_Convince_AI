@@ -5,13 +5,23 @@ import os
 # Monkey patch transformers to bypass PyTorch 2.6 requirements for vision causal masks
 try:
     import transformers.masking_utils
-    class MockTransformGetItemToIndex:
-        def __enter__(self):
-            return self
-        def __exit__(self, exc_type, exc_val, exc_tb):
-            pass
-    transformers.masking_utils.TransformGetItemToIndex = MockTransformGetItemToIndex
+    # Keep the _is_torch_greater_or_equal_than_2_6 check as True to bypass the or_mask/and_mask check
     transformers.masking_utils._is_torch_greater_or_equal_than_2_6 = True
+    
+    # Save the original sdpa_mask function
+    _orig_sdpa_mask = transformers.masking_utils.sdpa_mask
+    
+    def patched_sdpa_mask(*args, **kwargs):
+        try:
+            return _orig_sdpa_mask(*args, **kwargs)
+        except Exception as e:
+            # If vmap fails due to .item() on torch<2.6, retry without vmap
+            if "vmap" in str(e) or "TransformGetItemToIndex" in str(e) or "item" in str(e):
+                kwargs["use_vmap"] = False
+                return _orig_sdpa_mask(*args, **kwargs)
+            raise e
+            
+    transformers.masking_utils.sdpa_mask = patched_sdpa_mask
 except ImportError:
     pass
 import secrets
