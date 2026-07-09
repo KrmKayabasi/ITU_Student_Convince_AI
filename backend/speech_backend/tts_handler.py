@@ -198,19 +198,30 @@ class OfflineTTSHandler:
         print(f"[TTS] Ses sentezi {synthesis_time:.2f} saniyede tamamlandı.", flush=True)
         return waveform, sample_rate
 
+    def _turkish_lowercase(self, text):
+        mapping = {
+            "İ": "i",
+            "I": "ı",
+            "Ş": "ş",
+            "Ç": "ç",
+            "Ğ": "ğ",
+            "Ü": "ü",
+            "Ö": "ö"
+        }
+        for upper, lower in mapping.items():
+            text = text.replace(upper, lower)
+        return text.lower()
+
     def _clean_text(self, text):
         """Helper to sanitize text for TTS with advanced Turkish normalization."""
+        # Convert to Turkish lowercase to prevent capitalization spelling-out bugs
+        text = self._turkish_lowercase(text)
+
         # Clean markdown characters to prevent literal pronunciation (e.g. asterisks as "yıldız")
         text = text.replace("*", "").replace("_", "").replace("#", "").replace("`", "")
         
         # Clean quotes and apostrophes to prevent word splitting or character reading (e.g. Günleri'ne -> Günlerine)
         text = text.replace("'", "").replace('"', "").replace("”", "").replace("“", "").replace("’", "")
-        
-        # Replace soft g (ğ/Ğ) with g/G to prevent the TTS engine from saying "yumuşak ge"
-        text = text.replace("ğ", "g").replace("Ğ", "G")
-        
-        # Replace dotless ı/I with dotted i/İ to bypass espeak-ng spelling-out (heceleme) bugs
-        text = text.replace("ı", "i").replace("I", "İ")
         
         # Replace symbols with words
         symbols = {
@@ -227,21 +238,21 @@ class OfflineTTSHandler:
         for sym, replacement in symbols.items():
             text = text.replace(sym, replacement)
             
-        # Phonetic replacements for common abbreviations using regex word boundaries
+        # Phonetic replacements for common abbreviations (in lowercase)
         abbreviations = {
-            r"\bİTÜ\b": "İtü",
-            r"\bAI\b": "yapay zeka",
-            r"\bLLM\b": "el el em",
-            r"\bTTS\b": "ses sentezi",
-            r"\bASR\b": "ses tanıma",
+            r"\bitü\b": "itü",
+            r"\bai\b": "yapay zeka",
+            r"\bllm\b": "el el em",
+            r"\btts\b": "ses sentezi",
+            r"\basr\b": "ses tanıma",
             r"\bvs\b\.?": "ve saire",
             r"\bvb\b\.?": "ve benzeri",
-            r"\bYKS\b": "ye ke se",
-            r"\bTL\b": "Türk Lirası",
-            r"\bPDF\b": "pe de fe",
-            r"\bAPI\b": "a pi ay",
-            r"\bUI\b": "yu ay",
-            r"\bCV\b": "si vi",
+            r"\byks\b": "ye ke se",
+            r"\btl\b": "Türk Lirası",
+            r"\bpdf\b": "pe de fe",
+            r"\bapi\b": "a pi ay",
+            r"\bui\b": "yu ay",
+            r"\bcv\b": "si vi",
         }
         for pattern, replacement in abbreviations.items():
             text = re.sub(pattern, replacement, text)
