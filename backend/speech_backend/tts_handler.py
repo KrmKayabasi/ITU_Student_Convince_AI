@@ -38,6 +38,7 @@ class OfflineTTSHandler:
         elif self.use_xtts:
             print("[TTS] Çevrimdışı Coqui XTTS v2 yükleniyor...", flush=True)
             start_time = time.time()
+            os.environ["COQUI_TOS_AGREED"] = "1"
 
             # Transformers v5 compatibility patches for Coqui TTS.
             # All monkey-patches are scoped: originals are restored after model load
