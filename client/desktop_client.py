@@ -19,6 +19,7 @@ import queue
 import argparse
 import threading
 import tempfile
+import json
 import numpy as np
 import cv2
 import httpx
@@ -750,20 +751,47 @@ class MainWindow(QMainWindow):
 
     # Docker pipeline controls
     def _start_cv_docker(self) -> None:
+        # Prevent starting duplicate instances if an execution is already active
+        active_proc = self.qprocesses.get("docker_compose")
+        if active_proc and active_proc.state() != QProcess.ProcessState.NotRunning:
+            self.log_viewer.appendPlainText("[Docker Alert] A docker compose action is already in progress.")
+            return
+
         self.log_viewer.appendPlainText("Starting CV Pipeline Container (docker compose up -d)...")
+        self.start_btn.setEnabled(False)
+        self.stop_btn.setEnabled(False)
+
         proc = QProcess(self)
         proc.readyReadStandardOutput.connect(self._on_docker_stdout)
         proc.readyReadStandardError.connect(self._on_docker_stderr)
+        proc.finished.connect(lambda exit_code, exit_status, p=proc: self._on_docker_finished(p, "Start", exit_code))
         proc.start("docker", ["compose", "up", "-d"])
         self.qprocesses["docker_compose"] = proc
 
     def _stop_cv_docker(self) -> None:
+        active_proc = self.qprocesses.get("docker_compose")
+        if active_proc and active_proc.state() != QProcess.ProcessState.NotRunning:
+            self.log_viewer.appendPlainText("[Docker Alert] A docker compose action is already in progress.")
+            return
+
         self.log_viewer.appendPlainText("Stopping CV Pipeline Container (docker compose down)...")
+        self.start_btn.setEnabled(False)
+        self.stop_btn.setEnabled(False)
+
         proc = QProcess(self)
         proc.readyReadStandardOutput.connect(self._on_docker_stdout)
         proc.readyReadStandardError.connect(self._on_docker_stderr)
+        proc.finished.connect(lambda exit_code, exit_status, p=proc: self._on_docker_finished(p, "Stop", exit_code))
         proc.start("docker", ["compose", "down"])
         self.qprocesses["docker_compose"] = proc
+
+    def _on_docker_finished(self, proc: QProcess, action: str, exit_code: int) -> None:
+        self.start_btn.setEnabled(True)
+        self.stop_btn.setEnabled(True)
+        if exit_code == 0:
+            self.log_viewer.appendPlainText(f"[Docker Success] {action} command completed successfully.")
+        else:
+            self.log_viewer.appendPlainText(f"[Docker Error] {action} command failed with exit code {exit_code}.")
 
     def _on_docker_stdout(self) -> None:
         sender = self.sender()
