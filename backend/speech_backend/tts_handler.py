@@ -60,8 +60,9 @@ class OfflineTTSHandler:
                 from transformers.utils.import_utils import _LazyModule
                 import transformers.pytorch_utils
                 if not hasattr(transformers.pytorch_utils, 'isin_mps_friendly'):
+                    import torch
                     def _isin_mps_friendly(elements, test_elements):
-                        return elements.isin(test_elements)
+                        return torch.isin(elements, test_elements)
                     transformers.pytorch_utils.isin_mps_friendly = _isin_mps_friendly
 
                 _original_getattr = _LazyModule.__getattr__
