@@ -58,14 +58,20 @@ uv run python client/desktop_client.py
 - **Left Panel**: Your webcam feed with live scoring overlay (Attention, Posture, and active Emotions).
 - **Right Panel**: The AI companion avatar interface.*
 
-### Step 4: Bootstrap the Conversational AI Stack
-Inside the PyQt6 Desktop Client UI, click the **"Start All Services"** button at the bottom of the left panel.
-This will:
-1. Automatically load your Hugging Face credentials (`~/.cache/huggingface/token`).
-2. Run `docker compose up -d` in the background to build and start the STT, TTS, LLM (Gemma 4 E2B), Voice Backend, and Frontend containers.
-3. Show the live container health indicators (`RUNNING` / `STARTING` / `STOPPED`) on the dashboard using dynamic status checks.
+### Step 4: Start the host-native Cascaded Speech Server
+The speech server runs natively on the host to access Apple Silicon GPU (MPS) / Metal acceleration for Gemma 12B and Piper VITS. Start it in a separate terminal:
+```bash
+./backend/voice_agent/dockerless/start_cascaded_speech_server.sh
+```
+*The server will initialize models and start listening at `http://localhost:8002`.*
 
-*To stop everything when you're done, simply click **"Stop All Services"** or close the PyQt6 window (which automatically runs `docker compose down` inside the background).*
+### Step 5: Bootstrap the UI & Voice Agent Stack
+1. Ensure **Docker Desktop** is running.
+2. Inside the PyQt6 Desktop Client UI, click the **"Start All Services"** button at the bottom of the left panel.
+   This will run `docker compose up -d` in the background to spin up the voice backend (`aime-backend`) and Next.js frontend (`aime-frontend`) containers.
+3. The dashboard will show live health indicators for the `SPEECH_SERVER`, `BACKEND`, and `FRONTEND` using real-time polling.
+
+*To stop everything when you're done, simply click **"Stop All Services"** or close the PyQt6 window (which automatically tears down the containers).*
 
 ---
 

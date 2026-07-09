@@ -8,6 +8,8 @@ ENV UV_COMPILE_BYTECODE=1 UV_LOCKED=1
 # be compiled from source, e.g. on Apple Silicon).
 ENV CMAKE_POLICY_VERSION_MINIMUM=3.5
 
+COPY diarizen_src ./diarizen_src
+
 RUN --mount=type=bind,source=uv.lock,target=uv.lock \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
     uv run --no-dev echo hello
