@@ -271,21 +271,10 @@ class GemmaAudioProcessor:
 
     def generate_response_stream(self, messages, audio_list):
         """
-        Streams Gemma 4 multimodal inference on the conversation history (messages) with a list of audio arrays.
-        Yields text clauses (separated by sentence-ending punctuation) for streaming TTS synthesis.
-
-        Clause-splitting strategy:
-          - Split on sentence-ending punctuation: . ! ?
-          - Do NOT split on commas, colons, semicolons, or newlines — those stay inside
-            the clause so the TTS engine gets enough prosodic context.
-          - A minimum clause length (20 chars) prevents single-word fragments that
-            cause Piper VITS to produce choppy/syllabic artifacts in Turkish.
+        Streams Gemma 4 multimodal inference, yielding text clauses for TTS.
+        Text passes through with minimal processing — espeak-ng's Turkish voice
+        handles characters, capitalization, and punctuation natively.
         """
-        import re as _re_mod
-
-        # Markdown characters that should never reach TTS — stripped from every token
-        _MD_STRIP = _re_mod.compile(r'[*_#`~>|]')
-
         prompt = self.processor.tokenizer.apply_chat_template(
             messages,
             tokenize=False,
@@ -293,7 +282,7 @@ class GemmaAudioProcessor:
         )
 
         if IS_MAC:
-            # Fallback for Mac (non-streaming for simplicity)
+            # Fallback for Mac (non-streaming)
             if len(audio_list) > 0:
                 _, response_text = self.generate_response(audio_list[-1], messages[0]["content"])
             else:
@@ -301,91 +290,49 @@ class GemmaAudioProcessor:
                 response_text = generate(self.model, self.processor, prompt, max_tokens=1024, verbose=False)
                 if hasattr(response_text, "text"):
                     response_text = response_text.text
-            # Strip markdown before yielding
-            clean = _MD_STRIP.sub('', response_text)
-            yield clean
+            yield response_text
             return
 
+        # --- CUDA PATH: STREAMING INFERENCE ---
+        from transformers import TextIteratorStreamer
+        from threading import Thread
+
+        if len(audio_list) > 0:
+            inputs = self.processor(
+                text=prompt, audio=audio_list, sampling_rate=16000, return_tensors="pt"
+            ).to("cuda")
         else:
-            # --- CUDA PATH: STREAMING INFERENCE VIA PYTORCH CUDA ---
-            from transformers import TextIteratorStreamer
-            from threading import Thread
+            inputs = self.processor(text=prompt, return_tensors="pt").to("cuda")
 
-            if len(audio_list) > 0:
-                inputs = self.processor(
-                    text=prompt,
-                    audio=audio_list,
-                    sampling_rate=16000,
-                    return_tensors="pt"
-                ).to("cuda")
-            else:
-                inputs = self.processor(
-                    text=prompt,
-                    return_tensors="pt"
-                ).to("cuda")
+        streamer = TextIteratorStreamer(
+            self.processor.tokenizer, skip_prompt=True, skip_special_tokens=True
+        )
+        generation_kwargs = dict(
+            **inputs, max_new_tokens=1024, do_sample=False, use_cache=True, streamer=streamer
+        )
+        thread = Thread(target=self.model.generate, kwargs=generation_kwargs)
+        thread.start()
 
-            streamer = TextIteratorStreamer(self.processor.tokenizer, skip_prompt=True, skip_special_tokens=True)
+        sentence_buffer = ""
+        for new_text in streamer:
+            # Only strip Gemma channel tokens — everything else passes through
+            clean_chunk = re.sub(r'<\|.*?\|>', '', new_text)
+            clean_chunk = re.sub(r'<[^>]+>', '', clean_chunk)
+            sentence_buffer += clean_chunk
 
-            generation_kwargs = dict(
-                **inputs,
-                max_new_tokens=1024,
-                do_sample=False,
-                use_cache=True,
-                streamer=streamer
-            )
+            # Split on standard punctuation (matching the reference pipeline)
+            if any(char in clean_chunk for char in [".", ",", "?", "!", "\n", ";", ":"]):
+                clause = sentence_buffer.strip()
+                clause = re.sub(r'^(thought|channel)\s*', '', clause, flags=re.IGNORECASE).strip()
+                if clause:
+                    yield clause
+                sentence_buffer = ""
 
-            thread = Thread(target=self.model.generate, kwargs=generation_kwargs)
-            thread.start()
-
-            # ── Improved clause buffering ──────────────────────────────────────
-            # Split only on sentence-ending punctuation (. ! ?), not on commas or
-            # newlines.  Turkish TTS needs multi-word context for natural prosody;
-            # single-word clauses cause syllabic artifacts ("hecelenme").
-            # Exception: short complete utterances ending in terminal punctuation
-            # (like "Evet.", "Hayır.", "Teşekkürler.") are yielded immediately.
-            #
-            # Anti-pattern: periods inside numbers ("533.14", "91.") must NOT
-            # trigger a split.  We check: if the character before the period is
-            # a digit, treat it as a decimal/ordinal, not a sentence boundary.
-            _SENTENCE_END = {".", "!", "?"}
-            _MIN_CLAUSE_LEN = 8
-            _TERMINAL = {".", "!", "?"}
-
-            sentence_buffer = ""
-            for new_text in streamer:
-                # Remove Gemma channel tokens and all markdown formatting
-                clean_chunk = re.sub(r'<\|.*?\|>', '', new_text)
-                clean_chunk = re.sub(r'<[^>]+>', '', clean_chunk)
-                clean_chunk = _MD_STRIP.sub('', clean_chunk)
-
-                sentence_buffer += clean_chunk
-
-                # Check if a sentence-ending marker appeared in this chunk
-                hit_sentence_end = False
-                for i, ch in enumerate(clean_chunk):
-                    if ch in _SENTENCE_END:
-                        if ch == ".":
-                            # Don't split on periods inside numbers:
-                            #   "533.14" → digit before '.' → keep buffering
-                            #   "91."    → digit before '.' → keep buffering
-                            #   "1. Madde" → digit before '.' → keep buffering
-                            #   "Evet."  → letter before '.' → split
-                            char_before = clean_chunk[i - 1] if i > 0 else (sentence_buffer[-1] if sentence_buffer else '')
-                            if char_before and char_before.isdigit():
-                                continue  # numeric period — don't split
-                        hit_sentence_end = True
-                        break
-
-                if hit_sentence_end:
-                    clause = sentence_buffer.strip()
-                    if clause:
-                        ends_terminal = clause[-1] in _TERMINAL
-                        if len(clause) >= _MIN_CLAUSE_LEN or ends_terminal:
-                            yield clause
-                            sentence_buffer = ""
-
-            # Yield any remaining text (flush the buffer), even if short
-            if sentence_buffer.strip():
-                yield sentence_buffer.strip()
+        # Flush remaining text
+        if sentence_buffer.strip():
+            clause = sentence_buffer.strip()
+            clause = re.sub(r'^(thought|channel)\s*', '', clause, flags=re.IGNORECASE).strip()
+            if clause:
+                yield clause
 
 
