@@ -5,6 +5,12 @@ import os
 # Monkey patch transformers to bypass PyTorch 2.6 requirements for vision causal masks
 try:
     import transformers.masking_utils
+    class MockTransformGetItemToIndex:
+        def __enter__(self):
+            return self
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            pass
+    transformers.masking_utils.TransformGetItemToIndex = MockTransformGetItemToIndex
     transformers.masking_utils._is_torch_greater_or_equal_than_2_6 = True
 except ImportError:
     pass
