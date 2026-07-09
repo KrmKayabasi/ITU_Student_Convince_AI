@@ -1,86 +1,55 @@
 # Setup & Installation Guide - ITU Student Convince AI
 
-Follow these instructions to set up virtual environments, build submodules with hardware optimizations, and run the services natively or using Docker.
+Follow these instructions to set up your virtual environments, install speech dependencies, and launch all components natively or using Docker.
 
 ---
 
 ## 🛠️ Prerequisites
 
 *   **Python**: Version 3.12 (highly recommended).
-*   **Rust Toolchain**: Required to compile the `moshi-server` native library.
-*   **CMake**: Required to build native submodules.
-*   **Node.js & pnpm**: Required for the Next.js frontend web UI.
-*   **uv**: The fast python package installer (`curl -LsSf https://astral.sh/uv | sh`).
+*   **Docker Desktop**: Required to run the CV scoring pipeline container.
+*   **uv**: The fast Python package installer (`curl -LsSf https://astral.sh/uv | sh`).
 
 ---
 
 ## 🚀 Step-by-Step Installation
 
-### 1. Setup the Root (CV Pipeline & Client)
+### 1. Unified Dependency Setup
+We use a single unified virtual environment (`.venv`) at the root of the project to run both the CV pipeline and the PyQt6 client. To set it up and resolve all package constraints automatically:
+
 ```bash
 # Clone the repository (if not already done)
 cd ITU_Student_Convince_AI
 
-# Create virtual environment in root
-uv venv
-source .venv/bin/activate
-
-# Install main requirements
-uv pip install -r requirements.txt
-
-# Install camera client requirements (PyQt6)
-uv pip install -r requirements-camera.txt
+# Run the unified setup script
+./scripts/setup_all.sh
 ```
-
-### 2. Setup the Voice Agent Backend (`backend/voice_agent/`)
-The voice agent backend contains native Rust submodules for real-time audio and diarisation.
-
-```bash
-cd backend/voice_agent/
-
-# Clean old virtual environments if any
-rm -rf .venv
-
-# Create virtual environment
-uv venv
-source .venv/bin/activate
-
-# Compile & install requirements (which will compile pyannote-audio and diarizen)
-uv pip install -e .
-uv pip install pytest
-```
-
-#### Hardware Accelerations:
-*   **Apple Silicon (macOS)**:
-    Start scripts compile the backend with Metal acceleration (`--features metal`).
-*   **NVIDIA GPU (Linux)**:
-    Start scripts compile the backend with CUDA acceleration (`--features cuda`).
+*This will create a fresh `.venv` in the root directory, install all required camera, media processing, and GUI dependencies, and install the local `diarizen` and `pyannote-audio` packages.*
 
 ---
 
 ## 🏃 Running the Pipeline
 
-### 1. Start the CV Backend
-Run the FastAPI scoring server:
+Follow this sequence to launch the entire system:
+
+### Step 1: Start the host-native Gemma 12B Speech Server
+The Speech-to-Speech server runs natively on the host to leverage Apple Silicon GPU (MPS) / Metal acceleration for Gemma 12B and Piper VITS:
 ```bash
-source .venv/bin/activate
-uvicorn backend.cv_pipeline.main:app --reload --host 0.0.0.0 --port 8000
+./scripts/start_cascaded_speech_server.sh
 ```
+*The server will start listening at `http://localhost:8002`.*
 
-### 2. Start the Desktop Client (with Services Manager)
-Run the PyQt6 interface:
+### Step 2: Start the CV Ingestion Backend (Docker)
+The CV Pipeline processes webcam frames sent by the desktop client to calculate attention and engagement metrics:
 ```bash
-source .venv/bin/activate
-python client/desktop_client.py
+# Start the Docker container in the background
+docker compose up -d
 ```
-Inside the PyQt6 window, simply click **"Start All Services"** to start the entire Unmute stack in the background.
+*The scoring service will run at `http://localhost:8000`.*
 
----
-
-## 🐳 Docker Stack (Unified Deployment)
-
-You can launch the integrated multi-container services with:
+### Step 3: Start the PyQt6 Desktop Client
+Launch the webcam and voice interface:
 ```bash
-docker compose up --build
+uv run python client/desktop_client.py
 ```
-*Note: The entire stack is strictly dockerized. You can run all 6 microservices (STT, TTS, LLM, Backend, Frontend, and CV pipeline) inside Docker using this single unified command, or let the PyQt6 desktop client manage them for you.*
+*Click **"Start CV Pipeline"** inside the desktop client GUI to automatically trigger the Docker container if it isn't already running.*
