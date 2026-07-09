@@ -18,6 +18,10 @@ RUN pip install --no-cache-dir \
     sounddevice \
     sherpa-onnx
 
+# Install torchaudio and Coqui TTS while preserving NGC CUDA/PyTorch packages
+RUN pip install --no-cache-dir torchaudio==2.5.0 --no-deps
+RUN pip install --no-cache-dir coqui-tts
+
 # Copy speech server source code and assets
 COPY . /workspace/
 
