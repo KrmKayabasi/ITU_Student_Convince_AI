@@ -16,7 +16,7 @@ ENABLE_THINKING = os.environ.get("ENABLE_THINKING", "0") == "1"
 # Text-to-Speech Model Config
 TTS_MODEL_ID = os.environ.get(
     "TTS_MODEL_ID",
-    os.path.join(os.path.dirname(__file__), "vits-piper-tr_TR-dfki-medium"),
+    os.path.join(os.path.dirname(__file__), "vits-piper-tr_TR-fahrettin-medium"),
 )
 
 # Device configuration: "mps" (Mac GPU), "cuda", or "cpu".

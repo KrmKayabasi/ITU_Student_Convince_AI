@@ -200,6 +200,10 @@ class OfflineTTSHandler:
 
     def _clean_text(self, text):
         """Helper to sanitize text for TTS."""
+        # Clean markdown characters to prevent literal pronunciation (e.g. asterisks as "yıldız")
+        text = text.replace("*", "").replace("_", "").replace("#", "").replace("`", "")
+        # Replace soft g (ğ/Ğ) with g/G to prevent the TTS engine from saying "yumuşak ge"
+        text = text.replace("ğ", "g").replace("Ğ", "G")
         # Replace common symbols or punctuation
         text = text.replace(";", ".").replace(":", ".").replace("-", " ")
         # Strip brackets
