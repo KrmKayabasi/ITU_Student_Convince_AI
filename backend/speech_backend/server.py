@@ -213,8 +213,11 @@ async def chat_stream(request: Request, _auth=Depends(_verify_auth)):
                 # ── Inter-clause silence padding ────────────────────────────
                 if _SILENCE_SAMPLES == 0:
                     _SILENCE_SAMPLES = int(sample_rate * 0.15)  # 150ms pause between clauses
+                    # Round up to a multiple of 1024 so every chunk is exactly
+                    # 4096 bytes (1024 float32) — prevents short final chunks
+                    # that trigger micro-fade artifacts on the client.
+                    _SILENCE_SAMPLES = ((_SILENCE_SAMPLES + 1023) // 1024) * 1024
                 if first_chunk_sent and _SILENCE_SAMPLES > 0:
-                    # Insert silence between the previous clause and this one
                     silence = np.zeros(_SILENCE_SAMPLES, dtype=np.float32)
                     for i in range(0, len(silence), 1024):
                         yield silence[i:i + 1024].tobytes()

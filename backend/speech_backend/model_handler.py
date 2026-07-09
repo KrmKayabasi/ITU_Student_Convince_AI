@@ -270,10 +270,17 @@ class GemmaAudioProcessor:
         return thinking_content, final_response
 
     def generate_response_stream(self, messages, audio_list):
-        """
-        Streams Gemma 4 multimodal inference, yielding text clauses for TTS.
-        Text passes through with minimal processing — espeak-ng's Turkish voice
-        handles characters, capitalization, and punctuation natively.
+        """Streams Gemma 4 inference, yielding text clauses for TTS.
+
+        Clause-splitting strategy:
+          - Split only on sentence-ending punctuation: . ! ?
+          - Commas, colons, semicolons, and newlines stay INSIDE the clause
+            so espeak-ng gets full prosodic context (prevents hecelenme)
+          - Periods inside numbers (533.14, 91.) do NOT trigger splits
+          - Minimum clause length of 10 chars prevents single-word fragments
+            that cause syllable-by-syllable artifacts
+          - Short utterances ending in terminal punctuation (Evet., Hayır.)
+            are yielded immediately regardless of length
         """
         prompt = self.processor.tokenizer.apply_chat_template(
             messages,
@@ -282,7 +289,6 @@ class GemmaAudioProcessor:
         )
 
         if IS_MAC:
-            # Fallback for Mac (non-streaming)
             if len(audio_list) > 0:
                 _, response_text = self.generate_response(audio_list[-1], messages[0]["content"])
             else:
@@ -293,7 +299,6 @@ class GemmaAudioProcessor:
             yield response_text
             return
 
-        # --- CUDA PATH: STREAMING INFERENCE ---
         from transformers import TextIteratorStreamer
         from threading import Thread
 
@@ -313,20 +318,45 @@ class GemmaAudioProcessor:
         thread = Thread(target=self.model.generate, kwargs=generation_kwargs)
         thread.start()
 
+        # ── Clause buffering ─────────────────────────────────────────────────
+        # Split only on . ! ? (not , \n ; : — those stay inside for prosody)
+        _SENTENCE_END = {".", "!", "?"}
+        _MIN_CLAUSE_LEN = 10
+
         sentence_buffer = ""
         for new_text in streamer:
-            # Only strip Gemma channel tokens — everything else passes through
             clean_chunk = re.sub(r'<\|.*?\|>', '', new_text)
             clean_chunk = re.sub(r'<[^>]+>', '', clean_chunk)
+
+            hit_end = False
+            for i, ch in enumerate(clean_chunk):
+                if ch in _SENTENCE_END:
+                    if ch == ".":
+                        # Check the char before the period — but we haven't
+                        # added clean_chunk to the buffer yet at this point.
+                        # Look at clean_chunk[i-1], or if the period is the
+                        # first char in this chunk, the last char of the
+                        # accumulated buffer (which does NOT include clean_chunk yet).
+                        if i > 0:
+                            char_before = clean_chunk[i - 1]
+                        else:
+                            char_before = sentence_buffer[-1] if sentence_buffer else ''
+                        if char_before and char_before.isdigit():
+                            continue  # numeric period — don't split
+                    hit_end = True
+                    break
+
             sentence_buffer += clean_chunk
 
-            # Split on standard punctuation (matching the reference pipeline)
-            if any(char in clean_chunk for char in [".", ",", "?", "!", "\n", ";", ":"]):
+            if hit_end:
                 clause = sentence_buffer.strip()
                 clause = re.sub(r'^(thought|channel)\s*', '', clause, flags=re.IGNORECASE).strip()
-                if clause:
+                ends_terminal = clause and clause[-1] in _SENTENCE_END
+                # Skip punctuation-only clauses — "." or "!" alone is silent anyway
+                has_content = bool(re.search(r'\w', clause)) if clause else False
+                if clause and has_content and (len(clause) >= _MIN_CLAUSE_LEN or ends_terminal):
                     yield clause
-                sentence_buffer = ""
+                    sentence_buffer = ""
 
         # Flush remaining text
         if sentence_buffer.strip():

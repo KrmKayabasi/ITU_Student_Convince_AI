@@ -29,9 +29,43 @@ _sys_prompt_path_local = os.path.join(os.path.dirname(__file__), "SYSTEM_PROMPT.
 _sys_prompt_path_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "SYSTEM_PROMPT.md"))
 _sys_prompt_path = _sys_prompt_path_local if os.path.exists(_sys_prompt_path_local) else _sys_prompt_path_root
 
+def _strip_markdown_for_llm(text: str) -> str:
+    """Strip Markdown formatting from the system prompt before sending to LLM.
+
+    The LLM learns to reproduce formatting it sees in its system prompt.
+    Removing Markdown syntax prevents the LLM from outputting *, _, #, `, |
+    characters that espeak-ng mispronounces as Turkish words ("yıldız", "alt
+    çizgi", etc.).  Content is preserved; only syntax markers are removed.
+    """
+    import re as _re
+    # Strip bold/italic markers
+    text = _re.sub(r'\*{1,3}', '', text)
+    # Strip underscore emphasis (but not in URLs or words)
+    text = _re.sub(r'(?<!\w)_{1,2}(?!\w)', '', text)
+    # Strip heading markers (##, ###, etc.)
+    text = _re.sub(r'^#{1,6}\s+', '', text, flags=_re.MULTILINE)
+    # Strip code backticks
+    text = text.replace('`', '')
+    # Strip strikethrough
+    text = text.replace('~~', '')
+    # Strip blockquote markers
+    text = _re.sub(r'^>\s?', '', text, flags=_re.MULTILINE)
+    # Strip table pipes and formatting
+    text = _re.sub(r'\|', ' ', text)
+    # Strip horizontal rules
+    text = _re.sub(r'^-{3,}$', '', text, flags=_re.MULTILINE)
+    # Strip link syntax [text](url) → text
+    text = _re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
+    # Strip HTML/markdown image syntax
+    text = _re.sub(r'!\[([^\]]*)\]\([^)]+\)', r'\1', text)
+    # Collapse whitespace
+    text = _re.sub(r'\n{3,}', '\n\n', text)
+    text = _re.sub(r'[ \t]{2,}', ' ', text)
+    return text.strip()
+
 if os.path.exists(_sys_prompt_path):
     with open(_sys_prompt_path, 'r', encoding='utf-8') as _f:
-        SYSTEM_INSTRUCTION = _f.read().strip()
+        SYSTEM_INSTRUCTION = _strip_markdown_for_llm(_f.read().strip())
 else:
     SYSTEM_INSTRUCTION = (
         "Sen yararlı bir Türkçe sesli asistansın. "

@@ -345,14 +345,27 @@ class ResponseGeneratorWorker(QThread):
                     play_stream.start()
 
                     self.status_changed.emit("Speaking...")
+                    # ── Byte-aligned reassembly ───────────────────────────
+                    # iter_bytes(chunk_size=4096) does NOT guarantee alignment
+                    # with the server's 1024-float32 (4096-byte) yield chunks.
+                    # TCP fragmentation or HTTP chunk aggregation can deliver
+                    # partial reads.  We buffer partial bytes and reassemble
+                    # at float32 (4-byte) boundaries to prevent garbled audio.
+                    _byte_buf = b""
                     for chunk in response.iter_bytes(chunk_size=1024 * 4):
                         if self.is_interrupted:
                             break
-                        audio_chunk = np.frombuffer(chunk, dtype=np.float32)
-                        if len(audio_chunk) > 0:
-                            for i in range(0, len(audio_chunk), 512):
-                                sub_chunk = audio_chunk[i:i + 512]
-                                playback_queue.put(sub_chunk)
+                        _byte_buf += chunk
+                        # Process complete float32 samples (4 bytes each)
+                        n_complete = (len(_byte_buf) // 4) * 4
+                        if n_complete > 0:
+                            audio_chunk = np.frombuffer(_byte_buf[:n_complete], dtype=np.float32)
+                            _byte_buf = _byte_buf[n_complete:]
+                            if len(audio_chunk) > 0:
+                                for i in range(0, len(audio_chunk), 512):
+                                    sub_chunk = audio_chunk[i:i + 512]
+                                    playback_queue.put(sub_chunk)
+                    # Flush any remaining bytes (should be 0 after final chunk)
 
             # Wait for playout queue to finish before closing
             while not playback_queue.empty() and not self.is_interrupted:

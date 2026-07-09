@@ -253,21 +253,38 @@ class OfflineTTSHandler:
         return text.lower()
 
     def _clean_text(self, text):
-        """Minimal text sanitization for TTS.
+        """Sanitize text before TTS synthesis.
 
-        Strategy: espeak-ng's Turkish voice handles Turkish characters (ğ, ş, ı,
-        ç, ö, ü, İ, Ş, Ğ), capitalization, and most punctuation natively. We
-        only fix the few characters that Piper VITS / espeak-ng handles poorly:
-          - semicolons and colons -> period (natural pause)
-          - standalone hyphens and dashes -> space (avoid spelling "tire")
-          - brackets stripped (markdown link syntax, etc.)
-        Everything else passes through as-is — Turkish text, punctuation,
-        symbols, and URLs all render correctly through espeak-ng's phonemizer.
+        espeak-ng's Turkish voice handles Turkish characters natively, but
+        certain ASCII characters cause problems:
+          - Markdown chars (*, _, #, `, ~, >, |) are read as words ("yıldız",
+            "alt çizgi", "diyez", "ters tırnak", "tilde", "büyüktür", "dikey çizgi")
+          - Uppercase letters are spelled letter-by-letter ("İTÜ" → "İ-T-Ü")
+          - Brackets, semicolons, colons, hyphens have specific replacements
+
+        Processing order: lowercase first (so markdown stripping catches
+        all chars), then strip markdown, then punctuation normalization.
         """
-        # Normalize clause-separating punctuation to period
+        # Step 1: Turkish lowercase — prevents letter-by-letter spelling
+        text = self._turkish_lowercase(text)
+
+        # Step 2: Strip markdown chars that espeak-ng reads as Turkish words
+        text = text.replace("*", "").replace("_", "").replace("`", "")
+        text = text.replace("#", "").replace("~", "").replace(">", "").replace("|", "")
+
+        # Step 3: Strip quotes (apostrophe removal for Turkish proper nouns:
+        # "İstanbul'da" becomes "istanbulda" which espeak-ng handles correctly)
+        text = text.replace("'", "").replace('"', "").replace(""", "").replace(""", "").replace("'", "")
+
+        # Step 4: Punctuation normalization
         text = text.replace(";", ".").replace(":", ".")
-        # Replace hyphens with spaces — espeak-ng reads "-" as "tire" in Turkish
-        text = text.replace("-", " ")
-        # Strip brackets (markdown links, etc.)
+        text = text.replace("—", " ").replace("–", " ")  # em-dash, en-dash → space
+        text = text.replace("-", " ")  # hyphen → space
+
+        # Step 5: Strip brackets
         text = re.sub(r'[{}\[\]\(\)<>]', '', text)
+
+        # Step 6: Collapse whitespace
+        text = re.sub(r'\s+', ' ', text)
+
         return text.strip()
