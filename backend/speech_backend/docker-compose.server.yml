@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  speech-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    ports:
+      - "8002:8002"
+    environment:
+      - DEVICE=cuda
+      - HOST=0.0.0.0
+      - PORT=8002
+      - MODEL_ID=google/gemma-4-12b-it
+      - QUANTIZATION=none
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped

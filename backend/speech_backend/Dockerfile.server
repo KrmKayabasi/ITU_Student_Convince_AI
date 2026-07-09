@@ -1,0 +1,26 @@
+# Optimized Speech Server Dockerfile for Dual NVIDIA H200 GPUs.
+# Uses NVIDIA's PyTorch NGC base container, pre-configured with CUDA 12, PyTorch, cuDNN, and NCCL.
+
+FROM nvcr.io/nvidia/pytorch:24.03-py3
+
+WORKDIR /workspace
+
+# Install python dependencies for the cascaded architecture
+RUN pip install --no-cache-dir \
+    fastapi \
+    uvicorn \
+    httpx \
+    numpy \
+    scipy \
+    soundfile \
+    transformers \
+    accelerate \
+    sounddevice
+
+# Copy speech server source code and assets
+COPY . /workspace/
+
+EXPOSE 8002
+
+# Start the FastAPI server using Uvicorn
+CMD ["uvicorn", "server.py", "--host", "0.0.0.0", "--port", "8002"]

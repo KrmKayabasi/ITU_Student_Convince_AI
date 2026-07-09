@@ -32,24 +32,28 @@ cd ITU_Student_Convince_AI
 
 Follow this sequence to launch the entire system:
 
-### Step 1: Start the host-native Gemma 12B Speech Server
-The Speech-to-Speech server runs natively on the host to leverage Apple Silicon GPU (MPS) / Metal acceleration for Gemma 12B and Piper VITS:
+### Step 1: Deploy the Speech Server on the NVIDIA H200 Server
+On the remote NVIDIA H200 GPU server, run the Docker Compose command to build and launch the unquantized Gemma 12B, Whisper Large v3 Turbo, and Piper VITS stack with full multi-GPU hardware acceleration:
 ```bash
-./scripts/start_cascaded_speech_server.sh
+cd backend/speech_backend
+docker compose -f docker-compose.server.yml up -d --build
 ```
-*The server will start listening at `http://localhost:8002`.*
+*The server will start listening at `http://<H200-SERVER-IP>:8002`.*
 
-### Step 2: Start the CV Ingestion Backend (Docker)
-The CV Pipeline processes webcam frames sent by the desktop client to calculate attention and engagement metrics:
+### Step 2: Start the CV Ingestion Backend on the Client Device
+Run the Docker container on your local client machine to process webcam frames:
 ```bash
-# Start the Docker container in the background
+# Start the Docker container on the client device in the background
 docker compose up -d
 ```
 *The scoring service will run at `http://localhost:8000`.*
 
-### Step 3: Start the PyQt6 Desktop Client
-Launch the webcam and voice interface:
+### Step 3: Launch the PyQt6 Client Device App
+Run the PyQt6 interface on your client device, pointing it to the remote H200 server:
 ```bash
-uv run python client/desktop_client.py
+uv run python client/desktop_client.py --speech-server http://<H200-SERVER-IP>:8002
 ```
-*Click **"Start CV Pipeline"** inside the desktop client GUI to automatically trigger the Docker container if it isn't already running.*
+*What this does:*
+1. Runs the camera display, gaze/posture tracking (MediaPipe/ONNX), and local speaker diarisation (DiariZen) natively on the client device.
+2. Captures user voice boundaries using native-compiled **Rust-bound Silero VAD** (`sherpa-onnx`) to eliminate Python interpreter loop overhead.
+3. Automatically posts audio turns to the remote H200 server and plays back the returned 24kHz audio stream.

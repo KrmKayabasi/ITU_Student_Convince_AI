@@ -393,6 +393,7 @@ class MainWindow(QMainWindow):
     def __init__(self, args):
         super().__init__()
         self.args = args
+        self.speech_server_url = args.speech_server
         self.setWindowTitle("İTÜ AI Tercih Danışmanı - Desktop Voice Client")
         self.resize(1100, 700)
 
@@ -662,7 +663,7 @@ class MainWindow(QMainWindow):
         self.active_worker = ResponseGeneratorWorker(
             audio_data, 
             self.pipeline, 
-            f"http://localhost:8002"
+            self.speech_server_url
         )
         self.active_worker.status_changed.connect(lambda s: self.lbl_status.setText(f"Status: {s}"))
         self.active_worker.diarisation_ready.connect(self._on_diarisation_ready)
@@ -759,10 +760,19 @@ class MainWindow(QMainWindow):
         proc.finished.connect(lambda exit_code, exit_status, p=proc: self._on_cv_status_finished(p))
         proc.start("docker", ["compose", "ps", "--format", "{{.Service}} {{.State}}"])
 
-        # Check port 8002 netcat connection
+        # Check remote speech server connection dynamically
+        from urllib.parse import urlparse
+        try:
+            parsed = urlparse(self.speech_server_url)
+            host = parsed.hostname or "127.0.0.1"
+            port = str(parsed.port or (443 if parsed.scheme == "https" else 80))
+        except Exception:
+            host = "127.0.0.1"
+            port = "8002"
+            
         nc_proc = QProcess(self)
         nc_proc.finished.connect(lambda exit_code, exit_status: self._on_nc_finished(exit_code))
-        nc_proc.start("nc", ["-z", "-G", "1", "127.0.0.1", "8002"])
+        nc_proc.start("nc", ["-z", "-G", "1", host, port])
 
     def _on_cv_status_finished(self, proc: QProcess) -> None:
         data = proc.readAllStandardOutput().data().decode("utf-8", errors="replace")
@@ -851,6 +861,7 @@ def parse_args():
     p.add_argument("--camera-index", type=int, default=0)
     p.add_argument("--server", default="ws://localhost:8000")
     p.add_argument("--fps", type=float, default=15.0)
+    p.add_argument("--speech-server", default="http://localhost:8002")
     return p.parse_args()
 
 def main() -> None:
