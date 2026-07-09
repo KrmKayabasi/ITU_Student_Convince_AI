@@ -1,84 +1,86 @@
-# ITU Student Convince AI
+# İTÜ AI Tercih Danışmanı - Student Convince AI
 
-ITU Student Convince AI is an enterprise-grade, context-aware conversational AI system. It integrates a real-time **Computer Vision (CV) Description Pipeline** (to track user focus, posture, and emotional state) with a natural **Voice Agent** (powered by Moshi speech-to-speech and Gemma 4 LLM) to simulate interactive, real-time mock convince scenarios.
+Welcome to the **İTÜ AI Preference Advisor**. This application is an interactive desktop assistant designed to help you prepare for advisor interviews. It combines real-time **Computer Vision** (tracking your camera feed for focus, eye contact, and posture) with a **Gemma 12B Voice Assistant** that hears you, understands who is speaking using speaker diarisation, and speaks back in Turkish.
 
----
-
-## 📂 Repository Structure
-
-The repository is organized following professional software engineering standards to separate backend, frontend, desktop client, and test paths:
-
-```
-ITU_Student_Convince_AI/
-├── backend/
-│   ├── cv_pipeline/         # FastAPI computer vision description pipeline
-│   └── voice_agent/         # FastAPI voice agent backend (STT/TTS/LLM)
-├── frontend/                # Next.js web avatar interface
-├── client/                  # PyQt6 desktop client and webcam ingestion
-├── tests/                   # Unified test suite
-│   ├── cv_pipeline/         # CV scoring and signal extraction tests
-│   └── voice_agent/         # Voice agent and speaker diarisation tests
-├── docs/                    # Technical documentation and sprint specifications
-├── Dockerfile               # Main container configuration for CV pipeline
-└── docker-compose.yml       # Unified orchestrator local stack
-```
+This guide explains how to set up and run the entire application, command by command, in simple terms.
 
 ---
 
-## ⚡ End-to-End Startup Instructions
+## 🛠️ Step-by-Step Launch Instructions
 
-Follow this step-by-step guide to launch all systems:
+Make sure **Docker Desktop** is open and running on your computer before starting.
 
-### Step 1: Pre-requisites & Setup
-Ensure you have **Docker Desktop** installed and running on your machine.
-Then, install the unified python dependencies for the scoring backend and desktop client:
+### Step 1: Set Up Python Dependencies
+Open your **Terminal** app (search for "Terminal" on your Mac) and run the following commands to create your local environment and install all packages automatically:
+
 ```bash
-# 1. Create a virtual environment at root
-uv venv
-source .venv/bin/activate
+# 1. Navigate to the project directory
+cd /Users/baydogan/Documents/ComputerScience/Projects/ITU_Student_Convince_AI
 
-# 2. Install all required dependencies (webcam, CV, models, PyQt6 GUI)
-uv pip install fastapi uvicorn "websockets>=13.1,<17.0" opencv-python opencv-python-headless numpy mediapipe onnxruntime PyQt6 PyQt6-WebEngine pytest
+# 2. Run the automated installer script
+./scripts/setup_all.sh
 ```
+*What this does:* This runs our installer script which sets up Python, installs libraries to read your camera feed, load the GUI window, and configure the audio processing models.
 
-### Step 2: Start the CV Ingestion Backend
-The FastAPI server processes video streams sent by the client. Run it inside the root directory:
+---
+
+### Step 2: Start the Gemma 12B Speech Server
+The voice assistant runs natively on your machine to access GPU acceleration (making it answer you instantly). Open a **new terminal tab or window** and run:
+
 ```bash
-# Run the FastAPI server (make sure you activated the virtual environment)
-uv run uvicorn backend.cv_pipeline.main:app --reload --host 0.0.0.0 --port 8000
+# 1. Navigate to the project folder
+cd /Users/baydogan/Documents/ComputerScience/Projects/ITU_Student_Convince_AI
+
+# 2. Start the speech-to-speech server
+./scripts/start_cascaded_speech_server.sh
 ```
-*The server will start listening at `http://localhost:8000`. It will search for models automatically in the local `./models/` folder.*
+*What to expect:* You will see messages showing that **Whisper Large v3 Turbo**, **Gemma 12B**, and the Turkish Voice Synthesizer are loading. Once finished, it will say `All models loaded and ready!` on port `8002`. Keep this terminal open in the background.
 
-### Step 3: Run the PyQt6 Desktop Client
-Launch the PyQt6 webcam panel and control board:
+---
+
+### Step 3: Start the Desktop Application
+Open a **third terminal window** and run the main desktop application:
+
 ```bash
+# 1. Navigate to the project folder
+cd /Users/baydogan/Documents/ComputerScience/Projects/ITU_Student_Convince_AI
+
+# 2. Launch the desktop GUI
 uv run python client/desktop_client.py
 ```
-*A window will open displaying:
-- **Left Panel**: Your webcam feed with live scoring overlay (Attention, Posture, and active Emotions).
-- **Right Panel**: The AI companion avatar interface.*
-
-### Step 4: Start the host-native Cascaded Speech Server
-The speech server runs natively on the host to access Apple Silicon GPU (MPS) / Metal acceleration for Gemma 12B and Piper VITS. Start it in a separate terminal:
-```bash
-./backend/voice_agent/dockerless/start_cascaded_speech_server.sh
-```
-*The server will initialize models and start listening at `http://localhost:8002`.*
-
-### Step 5: Bootstrap the UI & Voice Agent Stack
-1. Ensure **Docker Desktop** is running.
-2. Inside the PyQt6 Desktop Client UI, click the **"Start All Services"** button at the bottom of the left panel.
-   This will run `docker compose up -d` in the background to spin up the voice backend (`aime-backend`) and Next.js frontend (`aime-frontend`) containers.
-3. The dashboard will show live health indicators for the `SPEECH_SERVER`, `BACKEND`, and `FRONTEND` using real-time polling.
-
-*To stop everything when you're done, simply click **"Stop All Services"** or close the PyQt6 window (which automatically tears down the containers).*
+*What to expect:* A dark-themed application window will open:
+*   **Left Panel**: Shows your webcam feed.
+*   **Right Panel**: Shows the chat history with speech control buttons.
+*   **Status Label**: Will say `Status: Idle` once the speaker diarisation model is loaded.
 
 ---
 
-## 📖 Documentation
+### Step 4: Turn on the Camera Scoring Pipeline (Docker)
+Inside the left panel of the Desktop Application GUI, click the green **"Start CV Pipeline"** button.
+*   *What this does:* This automatically starts a Docker container in the background to analyze your posture, attention level, and facial expressions from your camera stream.
+*   *Verification:* The status indicator under the button will turn green and read `CV_PIPELINE: RUNNING`. You will see live scoring metrics (like focus level and emotion probabilities) appearing in the text box below your camera preview.
 
-For detailed guides, please refer to the following documents in the `docs/` folder:
+---
 
-*   **[Setup Guide (docs/SETUP.md)](file:///Users/baydogan/Documents/ComputerScience/Projects/ITU_Student_Convince_AI/docs/SETUP.md)**: Detailed step-by-step instructions on setting up virtual environments, building submodules, compiling Apple Metal/CUDA hardware accelerations, and downloading weights.
-*   **[System Architecture (docs/ARCHITECTURE.md)](file:///Users/baydogan/Documents/ComputerScience/Projects/ITU_Student_Convince_AI/docs/ARCHITECTURE.md)**: Detailed specifications of the decoupled CV Description Pipeline, PyQt6 client panel, and Unmute Voice Agent stack.
-*   **[Sprint Specification (docs/SPRINT.md)](file:///Users/baydogan/Documents/ComputerScience/Projects/ITU_Student_Convince_AI/docs/SPRINT.md)**: Original sprint design decisions, communication protocols, and timing bounds.
+## 🎙️ How to Talk with the AI
+
+1.  **Auto-Talk (VAD) Mode** (Default):
+    *   Simply start speaking into your microphone.
+    *   The app will say `Status: Listening...`.
+    *   When you stop speaking, it will automatically say `Status: Diarizing speech...` to identify who was speaking, and then send it to the advisor model.
+    *   The advisor's Turkish voice response will play through your speakers, and its reply will print as a chat bubble on the screen.
+2.  **Speaker Diarisation Colors**:
+    *   If multiple people speak in the room, the app uses its offline AI model to label the user bubbles with the exact speaker ID.
+    *   **Speaker 0** turns appear in **Blue**, **Speaker 1** turns in **Teal**, and **Speaker 2** in **Purple**.
+3.  **Manual Control**:
+    *   If you want to control when it records manually, uncheck **Auto-Talk (VAD)**.
+    *   Click and hold the **Hold to Talk** button while you speak, and release it when you are finished.
+4.  **Interrupting**:
+    *   If the AI is speaking and you want it to stop, click the orange **"Interrupt Playout"** button, or simply speak over it (in Auto-Talk mode).
+
+---
+
+## 📖 Further Reading
+For detailed software architecture specifications, developer guides, and test instructions, refer to:
+*   **[Installation Guide (docs/SETUP.md)](file:///Users/baydogan/Documents/ComputerScience/Projects/ITU_Student_Convince_AI/docs/SETUP.md)**
+*   **[System Architecture (docs/ARCHITECTURE.md)](file:///Users/baydogan/Documents/ComputerScience/Projects/ITU_Student_Convince_AI/docs/ARCHITECTURE.md)**
