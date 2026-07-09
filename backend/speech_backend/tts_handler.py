@@ -253,21 +253,21 @@ class OfflineTTSHandler:
         return text.lower()
 
     def _clean_text(self, text):
-        “””Minimal text sanitization for TTS.
+        """Minimal text sanitization for TTS.
 
-        Strategy: espeak-ng’s Turkish voice handles Turkish characters (ğ, ş, ı,
-        ç, ö, ü, İ, Ş, Ğ), capitalization, and most punctuation natively.  We
+        Strategy: espeak-ng's Turkish voice handles Turkish characters (ğ, ş, ı,
+        ç, ö, ü, İ, Ş, Ğ), capitalization, and most punctuation natively. We
         only fix the few characters that Piper VITS / espeak-ng handles poorly:
           - semicolons and colons -> period (natural pause)
-          - standalone hyphens and dashes -> space (avoid spelling “tire”)
+          - standalone hyphens and dashes -> space (avoid spelling "tire")
           - brackets stripped (markdown link syntax, etc.)
         Everything else passes through as-is — Turkish text, punctuation,
-        symbols, and URLs all render correctly through espeak-ng’s phonemizer.
-        “””
+        symbols, and URLs all render correctly through espeak-ng's phonemizer.
+        """
         # Normalize clause-separating punctuation to period
-        text = text.replace(“;”, “.”).replace(“:”, “.”)
-        # Replace hyphens with spaces — espeak-ng reads “-” as “tire” in Turkish
-        text = text.replace(“-”, “ “)
+        text = text.replace(";", ".").replace(":", ".")
+        # Replace hyphens with spaces — espeak-ng reads "-" as "tire" in Turkish
+        text = text.replace("-", " ")
         # Strip brackets (markdown links, etc.)
-        text = re.sub(r’[{}\[\]\(\)<>]’, ‘’, text)
+        text = re.sub(r'[{}\[\]\(\)<>]', '', text)
         return text.strip()
