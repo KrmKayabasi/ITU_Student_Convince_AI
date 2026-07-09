@@ -1,5 +1,15 @@
 # Swarm deployment
 
+> **⚠️ İTÜ Note:** This document describes the upstream Kyutai Unmute Docker Swarm deployment.
+> The İTÜ Student Convince AI project uses its own deployment strategy:
+> - **Speech server**: Docker Compose on H200 (`backend/speech_backend/docker-compose.server.yml`)
+> - **CV pipeline**: Docker Compose on client device (project-root `docker-compose.yml`)
+> - **Desktop client**: Native Python process (no containerization)
+>
+> For İTÜ-specific deployment instructions, see [`docs/SETUP.md`](../../docs/SETUP.md).
+
+---
+
 For production deployments like [unmute.sh](https://unmute.sh), we use Docker Swarm rather than Docker Compose.
 The two have a similar syntax, but Docker Compose is meant for running on a single machine whereas Docker Swarm scales multiple. You can think of Docker Swarm as "Multi-node Docker Compose".
 

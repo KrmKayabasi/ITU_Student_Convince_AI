@@ -1,4 +1,128 @@
-# Unmute
+# Unmute — İTÜ Student Convince AI (Voice Agent)
+
+> **This is a customized fork of [Kyutai Unmute](https://github.com/kyutai-labs/unmute)**
+> integrated into the İTÜ Student Convince AI project.
+>
+> The original Unmute browser-based voice chat system has been adapted to work with
+> our **PyQt6 desktop client**, **Gemma 4 12B** LLM (instead of Gemma 3 1B),
+> **Whisper Large v3 Turbo** ASR (instead of Kyutai STT), and **Piper VITS** /
+> **Sherpa-ONNX** Turkish TTS (instead of Kyutai TTS).
+>
+> For the full İTÜ project architecture, see:
+> - [`README.md`](../../README.md) — project overview
+> - [`docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) — system architecture
+> - [`docs/SETUP.md`](../../docs/SETUP.md) — setup & launch instructions
+
+---
+
+## What We Use from Unmute
+
+This directory contains two subsystems we leverage:
+
+### 1. DiariZen Speaker Diarisation (`diarizen_src/`)
+
+The DiariZen model (`BUT-FIT/diarizen-wavlm-large-s80-md-v2`) runs **locally on the client device** to identify who is speaking. This is loaded by `PipelineLoaderWorker` in [`client/workers.py`](../../client/workers.py) and used by `ResponseGeneratorWorker` to produce speaker-labeled conversation turns.
+
+Speaker colors in the desktop client:
+- **Speaker 0** → Blue
+- **Speaker 1** → Teal
+- **Speaker 2** → Purple
+
+### 2. Turkish Pipeline Adapters (`services/turkish/`)
+
+The Turkish STT/TTS adapters provided the foundation for our standalone speech backend at [`backend/speech_backend/`](../speech_backend/). The adapters speak the same WebSocket/msgpack protocol as Kyutai services.
+
+**What changed from the upstream Turkish pipeline:**
+
+| Component | Original Unmute | İTÜ Version |
+|-----------|----------------|-------------|
+| STT | faster-whisper (CT2) | Whisper Large v3 Turbo (HuggingFace pipeline) |
+| LLM | Gemma 4 E2B-it (~2B) | Gemma 4 12B (unquantized bf16 on H200) |
+| TTS | Sherpa-ONNX Piper or Supertonic | Piper VITS via Sherpa-ONNX |
+| Frontend | Next.js browser app | PyQt6 desktop client |
+| Client audio | Opus over WebSocket in browser | Raw PCM via HTTP POST from native client |
+| Diarisation | Not present | DiariZen local model |
+
+### 3. What We DON'T Use
+
+- **Kyutai STT** — replaced by Whisper Large v3 Turbo in `speech_backend/`
+- **Kyutai TTS** — replaced by Piper VITS / XTTS in `speech_backend/`
+- **Browser frontend** (`frontend/`) — replaced by `client/desktop_client.py`
+- **Docker Compose / Dockerless / Docker Swarm** Unmute deployment — replaced by our own Docker setup
+- **OpenRouter / VLLM LLM serving** — replaced by our own Gemma server
+
+---
+
+## Directory Structure
+
+```
+backend/voice_agent/
+├── diarizen_src/          — DiariZen speaker diarisation (used as-is)
+│   ├── dscore/            — Diarisation scoring metrics
+│   ├── pyannote-audio/    — PyAnnote Audio framework (dependency)
+│   └── recipes/           — DiariZen training recipes
+├── services/turkish/      — Turkish STT/TTS WebSocket adapters (foundation)
+├── unmute/                — Unmute Python backend library
+│   ├── llm/               — LLM system prompt handling
+│   └── loadtest/          — Load testing client
+├── docs/
+│   ├── browser_backend_communication.md  — Original WebSocket protocol docs
+│   └── turkish_low_latency_pipeline.md   — Turkish pipeline guide (UPDATED)
+├── README.md              — This file
+├── SWARM.md               — Docker Swarm deployment (upstream reference)
+├── CONTRIBUTING.md        — Contribution guide (upstream)
+├── voices.yaml            — Voice character definitions
+└── .github/               — PR template
+```
+
+---
+
+## Running the Voice Agent Components
+
+### DiariZen (local, inside desktop client)
+
+Loaded automatically when the desktop client starts:
+```bash
+uv run python client/desktop_client.py
+```
+
+### Turkish Pipeline (standalone, via Podman)
+
+```bash
+services/turkish/podman_pipeline.sh up
+```
+
+See [`docs/turkish_low_latency_pipeline.md`](docs/turkish_low_latency_pipeline.md) for details.
+
+### Standalone Speech Server
+
+The primary speech server lives in `backend/speech_backend/`, not here:
+```bash
+source .venv/bin/activate
+python backend/speech_backend/server.py
+```
+
+---
+
+## Testing
+
+```bash
+# Full project test suite (137 tests)
+pytest tests/ -v
+
+# Voice agent specific tests
+pytest tests/voice_agent/ -v
+```
+
+---
+
+## Original Unmute Documentation
+
+For reference, the original Unmute README content follows below. Some sections (Docker Compose setup, browser frontend, Kyutai STT/TTS) are **not applicable** to the İTÜ project and are preserved only for historical context.
+
+---
+
+# Unmute (Original README)
 
 Try it out at [Unmute.sh](https://unmute.sh)!
 
@@ -30,7 +154,7 @@ graph LR
 ## Setup
 
 > [!NOTE]
-> If something isn't working for you, don't hesistate to open an issue. We'll do our best to help you figure out what's wrong.
+> If something isn't working for you, don't hesitate to open an issue. We'll do our best to help you figure out what's wrong.
 
 Requirements:
 - Hardware: a GPU with CUDA support and at least 16 GB VRAM. Architecture must be x86_64, no aarch64 support is planned.
@@ -44,12 +168,7 @@ We provide multiple ways of deploying your own [unmute.sh](unmute.sh):
 | Dockerless                | 1 to 3         | 1 to 5             | Easy       |✅         |✅              |
 | Docker Swarm              | 1 to ~100      | 1 to ~100          | Medium     |✅         |❌              |
 
-
 Since Unmute is a complex system with many services that need to be running at the same time, we recommend using [**Docker Compose**](https://docs.docker.com/compose/) to run Unmute.
-It allows you to start or stop all services using a single command.
-Since the services are Docker containers, you get a reproducible environment without having to worry about dependencies.
-
-While we support deploying with Docker compose and without Docker, the Docker Swarm deployment is only given to show how we deploy and scale [unmute.sh](unmute.sh). It looks a lot like the compose files, but since debugging multi-nodes applications is hard, we cannot help you debug the swarm deployment.
 
 ### LLM access on Hugging Face Hub
 
@@ -57,74 +176,30 @@ You can use any LLM you want.
 In production, we use GPT OSS 120B served over OpenRouter.
 In the default local setup (Docker Compose/Dockerless), Unmute uses [Gemma 3 1B](https://huggingface.co/google/gemma-3-1b-it) as the LLM.
 
-This model is freely available but requires you to accept the conditions to accept it:
+> **⚠️ İTÜ note:** We use **Gemma 4 12B** (not Gemma 3 1B) served via our own `backend/speech_backend/server.py`. The H200 deployment loads the model unquantized in bf16.
+
+This model is freely available but requires you to accept the conditions to access it:
 
 1. Create a Hugging Face account.
-2. Accept the conditions on the [Mistral Small 3.2 24B model page](https://huggingface.co/mistralai/Mistral-Small-3.2-24B-Instruct-2506).
-3. [Create an access token.](https://huggingface.co/docs/hub/en/security-tokens) You can use a fine-grained token, the only permission you need to grant is "Read access to contents of all public gated repos you can access".
-   **Do not use tokens with write access when deploying publicly.** In case the server is compromised somehow, the attacker would get write access to any models/datasets/etc. you have on Hugging Face.
-4. Add the token into your `~/.bashrc` or equivalent as `export HUGGING_FACE_HUB_TOKEN=hf_...your token here...`
+2. Accept the conditions on the model page.
+3. [Create an access token.](https://huggingface.co/docs/hub/en/security-tokens)
+4. Add the token into your `~/.bashrc` as `export HUGGING_FACE_HUB_TOKEN=hf_...`
 
 ### Start Unmute
 
-Make sure you have [**Docker Compose**](https://docs.docker.com/compose/) installed.
-You'll also need the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) to allow Docker to access your GPU.
-To make sure the NVIDIA Container Toolkit is installed correctly, run:
-```bash
-sudo docker run --rm --runtime=nvidia --gpus all ubuntu nvidia-smi
-```
-
-If you use [google/gemma-3-1b-it](https://huggingface.co/google/gemma-3-1b-it),
-the default in `docker-compose.yml`, 16GB of GPU memory is sufficient.
-If you're running into memory issues, open `docker-compose.yml` and look for `NOTE:` comments to see places that you might need to adjust.
-
-On a machine with a GPU, run:
+Make sure you have [**Docker Compose**](https://docs.docker.com/compose/) installed and the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
 
 ```bash
-# Make sure you have the environment variable with the token:
-echo $HUGGING_FACE_HUB_TOKEN  # This should print hf_...something...
-
+echo $HUGGING_FACE_HUB_TOKEN
 docker compose up --build
 ```
 
-#### Using multiple GPUs
+### Using multiple GPUs
 
-On [Unmute.sh](https://unmute.sh/), we run the speech-to-text, text-to-speech, and the VLLM server on separate GPUs,
-which improves the latency compared to a single-GPU setup.
-The TTS latency decreases from ~750ms when running everything on a single L40S GPU to around ~450ms on [Unmute.sh](https://unmute.sh/).
-
-If you have at least three GPUs available, add this snippet to the `stt`, `tts` and `llm` services to ensure they are run on separate GPUs:
-
-```yaml
-  stt: # Similarly for `tts` and `llm`
-    # ...other configuration
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-```
-
+On [Unmute.sh](https://unmute.sh/), we run STT, TTS, and VLLM on separate GPUs for improved latency (~450ms vs ~750ms single-GPU).
 
 ### Running without Docker
 
-Alternatively, you can choose to run Unmute by manually starting the services without going through Docker.
-This can be more difficult to set up because of the various dependencies needed.
-
-The following instructions only work for Linux and WSL.
-
-#### Software requirements
-
-* `uv`: Install with `curl -LsSf https://astral.sh/uv/install.sh | sh`
-* `cargo`: Install with `curl https://sh.rustup.rs -sSf | sh`
-* `pnpm`: Install with `curl -fsSL https://get.pnpm.io/install.sh | sh -`
-* `cuda 12.1`: Install it with conda or directly from the Nvidia website. Needed for the Rust processes (tts and stt).
-
-#### Hardware requirements
-
-Start each of the services one by one in a different tmux session or terminal:
 ```bash
 ./dockerless/start_frontend.sh
 ./dockerless/start_backend.sh
@@ -132,182 +207,48 @@ Start each of the services one by one in a different tmux session or terminal:
 ./dockerless/start_stt.sh        # Needs 2.5GB of vram
 ./dockerless/start_tts.sh        # Needs 5.3GB of vram
 ```
-And the website should be accessible at `http://localhost:3000`.
-
-### Connecting to a remote server running Unmute
-
-If you're running Unmute on a machine that you're accessing over SSH – call it `unmute-box`  – and you'd like to access it from your local computer,
-you'll need to set up [port forwarding](https://www.ssh.com/academy/ssh/tunneling-example).
-
-> [!NOTE]
-> If you're running over HTTP and not HTTPS, you'll need to forward the ports even if `http://unmute-box:3000` is accessible directly.
-> This is because browsers usually won't let you use the microphone on HTTP connections except for localhost, for security reasons.
-> See below for HTTPS instructions.
-
-**For Docker Compose**: By default, our Docker Compose setup runs on port 80.
-To forward port 80 on the remote to port 3333 locally, use:
-
-```bash
-ssh -N -L 3333:localhost:80 unmute-box
-```
-If everything works correctly, this command will simply not output anything and just keep running.
-Then open `localhost:3333` in your browser.
-
-**For Dockerless**: You need to separately forward the backend (port 8000) and frontend (port 3000):
-
-```bash
-ssh -N -L 8000:localhost:8000 -L 3000:localhost:3000 unmute-box
-```
-
-```mermaid
-flowchart LR
-    subgraph Local_Machine [Local Machine]
-        direction TB
-        browser[Browser]
-        browser -. "User opens localhost:3000 in browser" .-> local_frontend[localhost:3000]
-        browser -. "Frontend queries API at localhost:8000" .-> local_backend[localhost:8000]
-    end
-    subgraph Remote_Server [Remote Server]
-        direction TB
-        remote_backend[Backend:8000]
-        remote_frontend[Frontend:3000]
-    end
-    local_backend -- "SSH Tunnel: 8000" --> remote_backend
-    local_frontend -- "SSH Tunnel: 3000" --> remote_frontend
-```
 
 ### HTTPS support
 
-For simplicity, we omit HTTPS support from the Docker Compose and Dockerless setups.
-If you want to make the deployment work over the HTTPS, consider using Docker Swarm
-(see [SWARM.md](/SWARM.md)) or ask your favorite LLM how to make the Docker Compose or dockerless setup work over HTTPS.
-
+For simplicity, we omit HTTPS support from the Docker Compose and Dockerless setups. See [SWARM.md](/SWARM.md) for production HTTPS via Docker Swarm.
 
 ## Production deployment with Docker Swarm
 
-If you're curious to know how we deploy and scale [unmute.sh](https://unmute.sh), take a look at our docs
-on the [Docker Swarm deployment](./SWARM.md).
+See [SWARM.md](./SWARM.md) for how we deploy and scale [unmute.sh](https://unmute.sh).
 
 ## Modifying Unmute
 
-Here are some high-level pointers about how you'd go about making certain changes to Unmute.
-
 ### Subtitles and dev mode
 
-Press "S" to turn on subtitles for both the user and the chatbot.
-
-There is also a dev mode that can help debugging, but it's disabled by default.
-Go to `useKeyboardShortcuts.ts` and change `ALLOW_DEV_MODE` to `true`.
-Then press `D` to see a debug view.
-You can add information to the dev mode by modifying `self.debug_dict` in `unmute_handler.py`.
+Press "S" to turn on subtitles. Press "D" in dev mode for debug view.
 
 ### Changing characters/voices
 
-The characters' voices and prompts are defined in [`voices.yaml`](voices.yaml).
-The format of the config file should be intuitive.
-Certain system prompts contain dynamically generated elements.
-For example, "Quiz show" has its 5 questions randomly chosen in advance from a fixed list.
-System prompts like this are defined in [`unmute/llm/system_prompt.py`](unmute/llm/system_prompt.py).
+Characters' voices and prompts are defined in [`voices.yaml`](voices.yaml). System prompts with dynamic elements are in [`unmute/llm/system_prompt.py`](unmute/llm/system_prompt.py).
 
-Note that the file is only loaded when the backend starts and is then cached, so if you change something in `voices.yaml`,
-you'll need to restart the backend.
-
-You can check out the available voices in our [voice repository](https://huggingface.co/kyutai/tts-voices).
-To use one of the voices, change the `path_on_server` field in [`voices.yaml`](voices.yaml) to the relative
-path of the voice you want, for example [`voice-donations/Haku.wav`](https://huggingface.co/kyutai/tts-voices/blob/main/voice-donations/Haku.wav).
-
-From June 2025 to February 2026, we also ran the [Unmute Voice Donation Project](https://unmute.sh/voice-donation),
-where volunteers provided their voices for use with Kyutai TTS 1.6B (used by Unmute) and other open-source TTS models.
-You can find these voices in the [voice repository](https://huggingface.co/kyutai/tts-voices) as well.
+> **İTÜ note:** We use our own system prompt at [`SYSTEM_PROMPT.md`](../../SYSTEM_PROMPT.md) for the İTÜ advisor persona.
 
 ### Using external LLM servers
 
-The Unmute backend can be used with any OpenAI compatible LLM server. By default, the `docker-compose.yml` configures VLLM to enable a fully self-contained, local setup.
-You can modify this file to change to another external LLM, such as an OpenAI server, a local ollama setup, etc.
-
-For ollama, as environment variables for the `unmute-backend` image, replace
-```yaml
-  backend:
-    image: unmute-backend:latest
-    [..]
-    environment:
-      [..]
-       - KYUTAI_LLM_URL=http://llm:8000
-```
-
-with
-```yaml
-  backend:
-    image: unmute-backend:latest
-    [..]
-    environment:
-      [..]
-      - KYUTAI_LLM_URL=http://host.docker.internal:11434
-      - KYUTAI_LLM_MODEL=gemma3
-      - KYUTAI_LLM_API_KEY=ollama
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-```
-This points to your localhost server. Alternatively, to use an OpenAI-compatible server such as [OpenRouter](https://openrouter.ai/), you can use
-```yaml
-  backend:
-    image: unmute-backend:latest
-    [..]
-    environment:
-      [..]
-      - KYUTAI_LLM_URL=https://openrouter.ai/api
-      - KYUTAI_LLM_MODEL=google/gemma-3-12b-it # or whatever
-      - KYUTAI_LLM_API_KEY=sk-.. # your OpenRouter key
-```
-
-The section for vllm can then be removed, as it is no longer needed:
-```yaml
-  llm:
-    image: vllm/vllm-openai:v0.11.0
-    [..]
-```
+The Unmute backend works with any OpenAI-compatible LLM server. By default it uses VLLM for a local setup.
 
 ### Swapping the frontend
 
-The backend and frontend communicate over websocket using a protocol based on the
-[OpenAI Realtime API](https://platform.openai.com/docs/guides/realtime) ("ORA").
-Where possible, we try to match the ORA format, but there are some extra messages we needed to add,
-and others have simplified parameters.
-We try to make it clear where we deviate from the ORA format, see [`unmute/openai_realtime_api_events.py`](unmute/openai_realtime_api_events.py).
+The backend and frontend communicate over WebSocket using a protocol based on the [OpenAI Realtime API](https://platform.openai.com/docs/guides/realtime).
 
-For detailed information about the WebSocket communication protocol, message types, and audio processing pipeline, see the [browser-backend communication documentation](docs/browser_backend_communication.md).
-
-Ideally, it should be simple to write a single frontend that can communicate with either the Unmute backend
-or the OpenAI Realtime API, but we are not fully compatible yet.
-Contributions welcome!
-
-The frontend is a Next.js app defined in `frontend/`.
-If you'd like to compare to a different frontend implementation,
-there is a Python client defined in
-[`unmute/loadtest/loadtest_client.py`](unmute/loadtest/loadtest_client.py),
-a script that we use to benchmark the latency and throughput of Unmute.
+> **İTÜ note:** Our desktop client (`client/desktop_client.py`) communicates with the speech server at `backend/speech_backend/server.py` via HTTP POST (`/chat_stream`) rather than the OpenAI Realtime WebSocket protocol.
 
 ### Tool calling
 
-This is a common requirement so we would appreciate a contribution to support tool calling in Unmute!
-
-The easiest way to integrate tool calling into Unmute would be to do so in a way that's fully invisible to Unmute itself - just make it part of the LLM server.
-See [this comment](https://github.com/kyutai-labs/unmute/issues/77#issuecomment-3035220686) on how this can be achieved.
-You'd need to write a simple server in FastAPI to wrap vLLM but plug in the tool call responses.
+Contributions welcome for tool calling support in Unmute.
 
 ## Developing Unmute
 
 ### Install pre-commit hooks
 
-First install `pre-commit` itself – you likely want to install it globally using `pip install pre-commit` rather than in a virtual environment or `uv`,
-because you need the `pre-commit` executable to always be available. Then run:
-
 ```bash
 pre-commit install --hook-type pre-commit
 ```
-
-We recommend using [uv](https://docs.astral.sh/uv/) to manage Python dependencies.
-The commands below assume you are using uv.
 
 ### Run backend (dev mode, with autoreloading)
 
@@ -322,8 +263,6 @@ uv run fastapi run unmute/main_websocket.py
 ```
 
 ### Run loadtest
-
-`loadtest_client.py` is a script that connects to Unmute and simulates conversations with it in order to measure latency and throughput.
 
 ```bash
 uv run unmute/loadtest/loadtest_client.py --server-url ws://localhost:8000 --n-workers 16

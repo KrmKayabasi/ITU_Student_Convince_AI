@@ -1,6 +1,16 @@
 # Browser-backend communication protocol
 
-This document explains how the browser frontend and backend service communicate through WebSocket connections in the Unmute system.
+> **⚠️ İTÜ Note:** This document describes the original Kyutai Unmute WebSocket protocol
+> used between the Next.js browser frontend and the Unmute backend. The İTÜ Student Convince AI
+> project does **not** use this protocol. Instead, we communicate via:
+> - **Speech**: HTTP POST `/chat_stream` with raw PCM float32 audio → streamed float32 audio response (see [`backend/speech_backend/server.py`](../../speech_backend/server.py))
+> - **CV**: WebSocket JPEG frames → JSON profiles (see [`backend/cv_pipeline/main.py`](../../cv_pipeline/main.py))
+>
+> For the İTÜ-specific architecture, see [`docs/ARCHITECTURE.md`](../../../docs/ARCHITECTURE.md).
+
+---
+
+This document explains how the browser frontend and backend service communicate through WebSocket connections in the **original Kyutai Unmute** system.
 
 ## Overview
 

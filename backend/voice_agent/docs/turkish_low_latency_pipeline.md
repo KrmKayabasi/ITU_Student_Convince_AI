@@ -1,7 +1,86 @@
-# Turkish Low-Latency Test Pipeline
+# Turkish Low-Latency Pipeline — İTÜ Student Convince AI
 
-This repo now has optional Turkish STT/TTS adapters under `services/turkish/`.
-They speak the same websocket/msgpack protocol as the Kyutai services, so the normal Unmute backend can use them without changing the browser protocol.
+> **Status: Customized for İTÜ production use (July 2026)**
+>
+> The original Kyutai Turkish pipeline has been adapted into a standalone speech server
+> at [`backend/speech_backend/`](../../speech_backend/) that serves the İTÜ desktop client.
+> See [`docs/ARCHITECTURE.md`](../../../docs/ARCHITECTURE.md) for the full system architecture.
+>
+> **Key differences from the original pipeline:**
+> - **STT**: Whisper Large v3 Turbo via HuggingFace `pipeline` (replaces faster-whisper/CT2)
+> - **LLM**: Gemma 4 12B unquantized bf16 on H200 (replaces Gemma 4 E2B-it)
+> - **TTS**: Piper VITS via Sherpa-ONNX or Coqui XTTS v2 (replaces Supertonic)
+> - **Frontend**: PyQt6 desktop client (replaces Next.js browser app)
+> - **Audio transport**: Raw PCM float32 via HTTP POST (replaces Opus over WebSocket)
+> - **Auth**: Optional Bearer token on speech server, query param on CV WebSockets
+> - **Diarisation**: DiariZen model runs locally on the client device
+
+---
+
+## Current İTÜ Speech Architecture
+
+```
+┌──────────────────────────────────────┐
+│       PyQt6 Desktop Client           │
+│                                      │
+│  Mic → Silero VAD → float32 PCM      │
+│  Speaker DiariZen (DiariZen local)   │
+│  Audio playout (24kHz output stream) │
+└──────────────┬───────────────────────┘
+               │ HTTP POST /chat_stream
+               │ Authorization: Bearer <token>
+               ▼
+┌──────────────────────────────────────┐
+│    Speech Server (FastAPI :8002)     │
+│                                      │
+│  Whisper Large v3 Turbo (ASR)        │
+│  Gemma 4 12B (LLM, unquantized)      │
+│  Piper VITS / XTTS v2 (TTS)         │
+│                                      │
+│  backend/speech_backend/server.py    │
+│  backend/speech_backend/config.py    │
+└──────────────────────────────────────┘
+```
+
+## Running the İTÜ Speech Pipeline
+
+### Production (H200 GPU server)
+
+```bash
+cd backend/speech_backend
+export SPEECH_SERVER_TOKEN=$(openssl rand -hex 32)
+docker compose -f docker-compose.server.yml up -d --build
+```
+
+### Development (Mac with MLX / local CUDA)
+
+```bash
+source .venv/bin/activate
+python backend/speech_backend/server.py
+```
+
+### Desktop Client
+
+```bash
+uv run python client/desktop_client.py \
+    --speech-server http://<server-ip>:8002 \
+    --auth-token <token>
+```
+
+### Standalone Terminal Client (no GUI)
+
+```bash
+export SPEECH_SERVER_TOKEN=<token>
+python backend/speech_backend/client.py
+```
+
+---
+
+## Original Turkish Pipeline (Kyutai Unmute adapters)
+
+The original WebSocket-based Turkish STT/TTS adapters under `services/turkish/` are preserved for reference. They speak the same protocol as Kyutai services and can be used as an alternative backend.
+
+
 
 ## STT Choice
 

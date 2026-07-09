@@ -1,4 +1,4 @@
-# System Architecture - ITU Student Convince AI
+# System Architecture — ITU Student Convince AI
 
 This document provides a technical overview of the components, communication flows, and design decisions of the ITU Student Convince AI system.
 
@@ -6,50 +6,206 @@ This document provides a technical overview of the components, communication flo
 
 ## 🏛️ Component Overview
 
-The system is designed around a **high-performance client-server architecture** separating lightweight, low-overhead native processing on the client device from heavy LLM/ASR compute on the remote server:
+The system uses a **client-server architecture** separating lightweight native processing on the client device from heavy LLM/ASR compute on the remote server:
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│             PyQt6 Client Device (e.g. Mac)               │
-│   (Webcam frame capture & Local Image Processing,        │
-│    Rust-optimized Silero VAD, Local Speaker Diarisation) │
-└───────────┬──────────────────────────────────┬───────────┘
-            │ 1. Video Frames                  │ 3. Audio & Text Stream
-            │ (JPEG via WebSocket)             │ (HTTP POST /chat_stream)
-            ▼                                  ▼
-┌──────────────────────────┐         ┌─────────────────────┐
-│    FastAPI CV Container  │         │   Dual NVIDIA H200  │
-│   (Local Client Device)  │         │  Speech Server (8002)│
-└──────────────────────────┘         └─────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│               PyQt6 Desktop Client (Mac/PC)                  │
+│                                                              │
+│  ┌─────────────┐  ┌──────────────┐  ┌────────────────────┐  │
+│  │ StreamWorker │  │ AudioCapture │  │ ResponseGenerator  │  │
+│  │ (webcam→CV)  │  │ Worker (VAD) │  │ Worker (diar+play) │  │
+│  └─────────────┘  └──────────────┘  └────────────────────┘  │
+│                                                              │
+│  client/desktop_client.py  — GUI orchestrator               │
+│  client/workers.py         — Background QThread workers     │
+│  client/metrics.py         — CV metrics formatting          │
+└────────────┬──────────────────────────┬──────────────────────┘
+             │ 1. JPEG frames           │ 3. PCM audio
+             │    (WebSocket)           │    (HTTP POST)
+             ▼                          ▼
+┌──────────────────────────┐  ┌────────────────────────────────┐
+│  CV Pipeline Container   │  │  Speech Server (FastAPI :8002) │
+│  (FastAPI :8000)         │  │                                │
+│                          │  │  Whisper Large v3 Turbo →      │
+│  MediaPipe Face/Pose     │  │  Gemma 4 12B →                │
+│  ONNX Emotion (1Hz)      │  │  Piper VITS TTS               │
+│  Session State Machine   │  │                                │
+│                          │  │  backend/speech_backend/       │
+│  backend/cv_pipeline/    │  │  server.py                     │
+└──────────────────────────┘  └────────────────────────────────┘
 ```
 
-### 1. Computer Vision (CV) Description Pipeline (`backend/cv_pipeline/`)
-*   **Role**: Handles real-time video processing natively on the local client device to minimize latency and bandwidth.
-*   **Technologies**: FastAPI, Uvicorn, MediaPipe (Face & Pose Landmarkers), ONNX Runtime (Emotion classification).
-*   **Design**:
-    *   Runs as a container directly on the local client device. MediaPipe and ONNX use compiled C/C++ backends under Python to bypass the Python Global Interpreter Lock (GIL) overhead.
+---
 
-### 2. PyQt6 Desktop Client Panel (`client/`)
-*   **Role**: Client-side recording, VAD boundaries, local speaker diarisation, and user interface.
-*   **Technologies**: PyQt6, sounddevice, sherpa-onnx, diarizen.
-*   **Rust-Optimized Native Performance**:
-    *   **Silero VAD**: Uses `sherpa-onnx`'s Voice Activity Detector which compiles directly into a native C++ runtime (with Rust/C bindings), running silence checks with virtually zero Python GIL or interpreter loop overhead.
-    *   **PortAudio Engine**: Audio capture and playout streams run under native compiled PortAudio threads via `sounddevice` to enforce hardware-aligned buffer sizes (16kHz input / 24kHz output).
-    *   **Local Diarisation**: The client runs speaker diarisation (`diarizen`) locally on the user's machine to offload speaker-identity processing from the remote GPU server.
+## 📁 Module Layout
 
-### 3. Dedicated Cascaded Speech Server (`backend/speech_backend/`)
-*   **Role**: High-power speech synthesis and language models.
-*   **Technologies**: Transformers, PyTorch, CUDA, Docker.
-*   **Design**:
-    *   Deployed on a remote server equipped with **2 x NVIDIA H200 GPUs** (sharing 282 GB HBM3e memory).
-    *   Loads unquantized **Gemma 4 12B** (in full `bfloat16` precision) and automatically distributes layers across both H200 cards using PyTorch `device_map="auto"`.
-    *   Loads **Whisper Large v3 Turbo** and **Piper VITS** on CUDA for sub-100ms transcription and synthesis.
+### 1. Computer Vision Pipeline (`backend/cv_pipeline/`)
+
+| File | Role |
+|------|------|
+| `main.py` | FastAPI app: WebSocket ingest (`/stream`, `/profile`, `/focus`, `/debug`), worker orchestration, session GC |
+| `manager.py` | `SessionManager`: thread-safe `session_id → SessionData` registry |
+| `session.py` | `SessionData` state machine (IDLE → CALIBRATING → ACTIVE), `RawSignals` dataclass, ring buffers |
+| `processing.py` | `FrameSlot` (thread-safe drop-stale frame container), `SignalExtractor` (orchestrates all detectors) |
+| `scoring.py` | `update_session()` state transitions, `build_initial_profile()`, `build_focus_payload()`, dynamic confidence |
+| `config.py` | Centralized thresholds and constants, all overridable via environment variables |
+| `detectors/face.py` | MediaPipe Face Landmarker wrapper (landmarks, blendshapes, head pose from transformation matrix) |
+| `detectors/pose.py` | MediaPipe Pose Landmarker wrapper (world + image landmarks, bbox) |
+| `detectors/gaze.py` | Eye contact from blendshapes + head pose, blink-aware, gating penalty |
+| `detectors/posture.py` | Lean (shoulder_z − hip_z), spine ratio (yaw-invariant), arms crossed detection |
+| `detectors/emotion.py` | ONNX emotion classifier (`enet_b0_8_best_vgaf`), background worker thread at ~1Hz, error-resilient |
+| `detectors/select.py` | Primary person selection (largest bbox + continuity hysteresis), face-to-pose matching |
+
+**Key design decisions:**
+- **Drop-stale frame ingestion**: `FrameSlot` holds exactly one frame; new frames overwrite unprocessed ones. No unbounded queue.
+- **VIDEO running mode**: MediaPipe requires strictly increasing timestamps; a monotonic counter is used (not wall-clock `time.monotonic()`).
+- **World landmarks for posture**: Image-space z is noisy under monocular perspective; pose signals use metric-scale world coordinates.
+- **Dynamic confidence**: All profile confidence values are computed from actual data characteristics, not hardcoded constants.
+
+### 2. Speech Server (`backend/speech_backend/`)
+
+| File | Role |
+|------|------|
+| `server.py` | FastAPI app: `/chat_stream`, `/reset`, `/last_turn`, `/health` with optional Bearer token auth |
+| `config.py` | Unified configuration (shared between server and standalone pipeline), all env-overridable |
+| `model_handler.py` | `GemmaAudioProcessor`: MLX (Mac) and CUDA (Linux) inference paths, streaming generation |
+| `tts_handler.py` | `OfflineTTSHandler`: XTTS v2 / Sherpa-ONNX / MMS-TTS backends with scoped monkey-patching |
+| `audio_handler.py` | `AudioHandler`: WebRTC noise suppression, Silero VAD, playout with barge-in interruption |
+| `pipeline.py` | Standalone speech-to-speech pipeline (alternative to client-server mode) |
+| `client.py` | Thin client for remote H200 server (audio capture → POST → stream playout) |
+| `client_config.py` | Client-side configuration (server URL, auth token, VAD params) |
+| `training/train_multimodal.py` | LoRA fine-tuning script for Gemma 4 on Turkish speech datasets |
+
+### 3. Desktop Client (`client/`)
+
+| File | Role |
+|------|------|
+| `desktop_client.py` | `MainWindow` (PyQt6): panel builders, chat bubbles, Docker controls, service health polling (~430 lines) |
+| `workers.py` | `PipelineLoaderWorker`, `AudioCaptureWorker` (thread-safe), `ResponseGeneratorWorker`, `StreamWorker` |
+| `metrics.py` | `format_metrics()`: renders live CV metrics as a human-readable text block |
+
+### 4. Test Suite (`tests/`)
+
+```
+tests/
+├── conftest.py              — Shared fixtures (mock objects, sample data)
+├── test_config.py           — 22 tests: defaults, env overrides, range validation
+├── test_gaze.py             — 15 tests: eye contact, gating, blink, head pose matrix
+├── test_posture.py          — 12 tests: lean, spine ratio, arms crossed
+├── test_select.py           — 10 tests: face selection, continuity, pose matching
+├── test_scoring.py          — 20 tests: update_session, profile, focus, dynamic confidence
+├── test_session.py          — 12 tests: state machine, ring buffers, RawSignals
+├── test_processing.py       — 10 tests: FrameSlot thread safety, crop_from_bbox
+├── test_emotion.py          —  8 tests: worker lifecycle, labels, error handling
+├── cv_pipeline/             — 16 integration tests (focus, gaze, posture, multi-kiosk, profile-once)
+└── voice_agent/             —  4 tests (pipeline loader, audio capture, speech integration, e2e)
+```
+
+**137 tests total. Run with:** `pytest tests/ -v`
 
 ---
 
 ## 📡 Communication Protocols
 
-1.  **Ingestion Stream**: Ingests webcam frames at `/stream/{session_id}` (binary JPEG over WebSocket).
-2.  **Profile Stream**: Broadcasts a single, rich behavioral assessment JSON over `/profile/{session_id}` once calibration and scoring thresholds are reached.
-3.  **Focus Stream**: Periodically pushes engagement metrics over `/focus/{session_id}` (every ~2.5 seconds).
-4.  **Speech Stream**: PyQt6 client posts raw float32 PCM audio bytes to `/chat_stream` (HTTP POST) and streams back synthesized float32 PCM response audio bytes.
+### CV Pipeline (Port 8000)
+
+| Endpoint | Direction | Protocol | Description |
+|----------|-----------|----------|-------------|
+| `/stream/{session_id}` | Client → Server | WebSocket (binary JPEG) | Ingests webcam frames |
+| `/profile/{session_id}` | Server → Client | WebSocket (JSON) | One-shot rich behavioral profile |
+| `/focus/{session_id}` | Server → Client | WebSocket (JSON) | Periodic focus metrics (~2.5s) |
+| `/debug/{session_id}` | Server → Client | WebSocket (JSON) | Raw debug data (~0.3s, dev only) |
+| `/health` | — | HTTP GET | Liveness/readiness probe |
+
+### Speech Server (Port 8002)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/chat_stream` | POST | Audio in (float32 PCM), streamed audio out |
+| `/reset` | POST | Clear conversation history |
+| `/last_turn` | GET | Retrieve last user/assistant text pair |
+| `/health` | GET | Liveness probe (no auth required) |
+
+---
+
+## 🔒 Authentication
+
+Both servers support **optional token-based auth** (off by default in development).
+
+### Speech Server — Bearer Token
+
+Set `SPEECH_SERVER_TOKEN` in the environment. All endpoints except `/health` require:
+```
+Authorization: Bearer <token>
+```
+
+### CV Pipeline — Query Parameter
+
+Set `CV_PIPELINE_TOKEN` in the environment. All WebSocket endpoints require:
+```
+ws://host:8000/stream/session-1?token=<token>
+```
+
+### Token Validation
+
+Tokens are compared using `secrets.compare_digest()` (constant-time, resistant to timing attacks). Invalid tokens receive HTTP 401 or WebSocket close code 4001.
+
+---
+
+## 🧵 Thread Safety
+
+### FrameSlot
+Uses `threading.Lock` for concurrent put (ingest thread) and get (worker thread) on the drop-stale frame container.
+
+### AudioCaptureWorker
+All shared mutable state (`is_recording`, `use_vad`, `buffer`) is protected by a `threading.Lock`. Property-based accessors enforce the lock from both the audio callback thread (real-time) and the Qt main thread.
+
+### EmotionWorker
+Background thread with its own lock for `_latest_crop`, `_label`, `_scores`. Five consecutive inference failures trigger an automatic reset to neutral to avoid serving stale predictions.
+
+### SessionManager
+Uses `threading.Lock` for `get_or_create`, `get`, `remove`, and `gc_stale_sessions`.
+
+---
+
+## 📊 CV Scoring Model
+
+### Score Components
+Three behavioral scores (attention, openness, energy) are computed as weighted sums of normalized signals:
+
+```
+attention = eye_contact×0.45 + lean_score×0.30 + emotion_energy×0.15 + spine_score×0.10
+openness  = eye_contact×0.25 + lean_score×0.20 + emotion_energy×0.20 + spine_score×0.25 + arms_open×0.10
+energy    = emotion_energy×0.50 + lean_score×0.20 + spine_score×0.20 + eye_contact×0.10
+```
+
+### Dynamic Confidence
+All confidence scores are computed from actual measurements:
+
+| Signal | Confidence Source |
+|--------|------------------|
+| Lean | Sigmoid ramp over sample count (0→1) |
+| Eye contact | 0.9 with head pose data, 0.5 without |
+| Spine | Physical plausibility check on ratio + tilt |
+| Emotion | Top-1 vs top-2 probability margin |
+
+### State Machine
+```
+IDLE ──(face detected)──→ CALIBRATING ──(3s elapsed)──→ ACTIVE
+  ↑                             ↑                          │
+  └──(no face > 2s)────────────┴──(new face)──────────────┘
+```
+- **IDLE**: No person in frame
+- **CALIBRATING**: New person detected, collecting lean baseline samples
+- **ACTIVE**: Normal analysis — ring buffers active, focus tracking, profile trigger armed
+
+---
+
+## ⚡ Performance Considerations
+
+- **Emotion inference at 1 Hz** in a background thread — does not block the 15fps main pipeline
+- **Health checks via HTTP** instead of spawning `nc` and `docker compose ps` subprocesses (was 120/min, now ~7/min via httpx + throttled Docker polling)
+- **MLX tempfile uses `delete=True`** — auto-cleanup by the OS, no manual `os.unlink` needed
+- **Face detection limited to `MAX_NUM_FACES` (default 3)** to bound MediaPipe processing time
+- **Pose detection limited to `MAX_NUM_POSES` (default 3)** similarly bounded

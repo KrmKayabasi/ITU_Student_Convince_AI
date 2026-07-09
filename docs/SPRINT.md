@@ -1,5 +1,21 @@
 # Sprint: Gerçek CV Modellerinin Entegrasyonu (Stub → Production)
 
+> **Durum: ✅ TAMAMLANDI (Temmuz 2026)**
+>
+> Bu sprint'teki tüm görevler (T1–T12) tamamlanmıştır. Gerçek modeller (MediaPipe Face/Pose Landmarker, EmotiEffLib ONNX) entegre edilmiş, tüm sinyaller (gaze, lean, spine, arms, emotion) canlı verilerle çalışmakta, ve 137 pytest testi başarıyla geçmektedir.
+>
+> **Sprint sonrası eklenenler:**
+> - Dinamik güven skorları (hardcoded sabitler yerine veriden hesaplanan)
+> - Token-tabanlı kimlik doğrulama (opsiyonel, `SPEECH_SERVER_TOKEN` / `CV_PIPELINE_TOKEN` ile)
+> - Thread-safety iyileştirmeleri (AudioCaptureWorker lock koruması, EmotionWorker hata durumunda reset)
+> - İstemci modül ayrıştırması (`client/workers.py`, `client/metrics.py`)
+> - Config birleştirme (tek `config.py`, `server_config.py` kaldırıldı)
+> - Performans iyileştirmeleri (HTTP health check yerine subprocess polling, MLX tempfile otomatik temizleme)
+>
+> Güncel mimari dokümantasyonu için: [`docs/ARCHITECTURE.md`](ARCHITECTURE.md)
+
+---
+
 > Bu doküman bir coding agent'a (Claude Code) verilmek üzere yazılmıştır.
 > Her görev; hedef dosya, teknik yönerge ve kabul kriteri içerir.
 > **Değişmez mimari kararlara** (Bölüm 2) dokunma; onları yeniden tartışma.

@@ -1,5 +1,11 @@
 # Contributing to Unmute
 
+> **⚠️ İTÜ Note:** This is the upstream Kyutai Unmute contribution guide. For contributing to
+> the İTÜ Student Convince AI project specifically, see the main [`README.md`](../../README.md)
+> and [`docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md).
+
+---
+
 ## Pull Requests
 
 1. Fork the repo and create your branch from `main`.
