@@ -21,4 +21,6 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
+    volumes:
+      - /home/yigit/.cache/huggingface:/root/.cache/huggingface
     restart: unless-stopped
