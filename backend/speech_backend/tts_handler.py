@@ -111,16 +111,36 @@ class OfflineTTSHandler:
                 print(f"[TTS] Çevrimdışı ONNX TTS (Sherpa) yükleniyor: {self.model_id}...", flush=True)
                 start_time = time.time()
                 import sherpa_onnx
-                
+
+                # Read the model JSON for inference parameters so they exactly
+                # match what the model was trained with.
+                _json_path = os.path.join(self.model_id, os.path.basename(self.model_path).replace(".onnx", ".onnx.json"))
+                _noise_scale = 0.667
+                _noise_w = 0.8
+                _length_scale = 1.0
+                if os.path.exists(_json_path):
+                    import json as _json_mod
+                    with open(_json_path, 'r') as _jf:
+                        _cfg = _json_mod.load(_jf)
+                    _inf = _cfg.get("inference", {})
+                    _noise_scale = float(_inf.get("noise_scale", _noise_scale))
+                    _noise_w = float(_inf.get("noise_w", _noise_w))
+                    _length_scale = float(_inf.get("length_scale", _length_scale))
+                    print(f"[TTS] Model inference params: noise_scale={_noise_scale}, "
+                          f"noise_w={_noise_w}, length_scale={_length_scale}", flush=True)
+
                 self.tts_config = sherpa_onnx.OfflineTtsConfig(
                     model=sherpa_onnx.OfflineTtsModelConfig(
                         vits=sherpa_onnx.OfflineTtsVitsModelConfig(
                             model=self.model_path,
                             tokens=self.tokens_path,
-                            data_dir=self.data_dir
+                            data_dir=self.data_dir,
+                            noise_scale=_noise_scale,
+                            noise_scale_w=_noise_w,
+                            length_scale=_length_scale,
                         ),
-                        num_threads=2,
-                        debug=False
+                        num_threads=4,   # 4 threads gives stable VITS decoding on CPU
+                        debug=False,
                     )
                 )
                 self.tts = sherpa_onnx.OfflineTts(self.tts_config)
@@ -235,6 +255,7 @@ class OfflineTTSHandler:
 
         # Clean markdown characters to prevent literal pronunciation (e.g. asterisks as "yıldız")
         text = text.replace("*", "").replace("_", "").replace("#", "").replace("`", "")
+        text = text.replace("~", "").replace(">", "").replace("|", "")
         
         # Clean quotes and apostrophes to prevent word splitting or character reading (e.g. Günleri'ne -> Günlerine)
         text = text.replace("'", "").replace('"', "").replace("”", "").replace("“", "").replace("’", "")

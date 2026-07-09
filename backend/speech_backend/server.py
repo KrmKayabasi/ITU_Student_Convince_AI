@@ -183,17 +183,14 @@ async def chat_stream(request: Request, _auth=Depends(_verify_auth)):
         start_stream_time = time.time()
         first_chunk_sent = False
 
-        # We'll determine the actual sample rate from the first TTS synthesis
-        # rather than assuming 24000 (Piper VITS outputs 22050, XTTS outputs 24000).
-        actual_sample_rate = 24000  # fallback, updated on first synthesis
-
-        # ── Cross-fade state ───────────────────────────────────────────────
-        # Each TTS clause is synthesized independently.  Without smoothing,
-        # concatenating two waveforms at arbitrary phase offsets creates an
-        # audible "pop" at every clause boundary.  We keep a short tail of the
-        # previous clause and apply a linear cross-fade with the new clause.
-        _XFADE_SAMPLES = 480  # ~10ms at 48kHz max, ~20ms at 24kHz, scaled below
-        _prev_tail = None     # np.ndarray, float32 — trailing samples from last clause
+        # ── Inter-clause silence ────────────────────────────────────────────
+        # Rather than cross-fading (which duplicates already-streamed audio and
+        # creates stutter/pop artifacts), we insert a short silence between
+        # independently-synthesized TTS clauses.  VITS models naturally decay
+        # to near-zero at utterance boundaries (final phoneme $ maps to silence),
+        # so the raw concatenation is already smooth.  The silence just adds a
+        # natural pause between sentences.
+        _SILENCE_SAMPLES = 0  # will be set on first clause from actual sample rate
 
         try:
             # Iterate over text clauses generated in real-time by Gemma
@@ -213,30 +210,14 @@ async def chat_stream(request: Request, _auth=Depends(_verify_auth)):
                 if tts_audio is None or len(tts_audio) == 0:
                     continue
 
-                # ── Update the actual sample rate from the first synthesis ──
-                actual_sample_rate = sample_rate
-                fade_len = max(1, int(_XFADE_SAMPLES * sample_rate / 48000))
-
-                # ── Apply cross-fade with previous clause's tail ────────────
-                if _prev_tail is not None and len(_prev_tail) > 0 and len(tts_audio) > 0:
-                    overlap = min(fade_len, len(_prev_tail), len(tts_audio))
-                    # Linear cross-fade: ramp down tail, ramp up head
-                    ramp_down = np.linspace(1.0, 0.0, overlap, dtype=np.float32)
-                    ramp_up   = np.linspace(0.0, 1.0, overlap, dtype=np.float32)
-                    # Yield the non-overlapping part of the previous tail first
-                    if len(_prev_tail) > overlap:
-                        for i in range(0, len(_prev_tail) - overlap, 1024):
-                            yield _prev_tail[i:i + 1024].tobytes()
-                    # Yield the cross-faded overlap region
-                    crossfaded = _prev_tail[-overlap:] * ramp_down + tts_audio[:overlap] * ramp_up
-                    for i in range(0, len(crossfaded), 1024):
-                        yield crossfaded[i:i + 1024].tobytes()
-                    # Trim the already-yielded head from tts_audio
-                    tts_audio = tts_audio[overlap:]
-                elif _prev_tail is not None and len(_prev_tail) > 0:
-                    # No overlap possible (very short previous chunk) — just yield it
-                    for i in range(0, len(_prev_tail), 1024):
-                        yield _prev_tail[i:i + 1024].tobytes()
+                # ── Inter-clause silence padding ────────────────────────────
+                if _SILENCE_SAMPLES == 0:
+                    _SILENCE_SAMPLES = int(sample_rate * 0.15)  # 150ms pause between clauses
+                if first_chunk_sent and _SILENCE_SAMPLES > 0:
+                    # Insert silence between the previous clause and this one
+                    silence = np.zeros(_SILENCE_SAMPLES, dtype=np.float32)
+                    for i in range(0, len(silence), 1024):
+                        yield silence[i:i + 1024].tobytes()
 
                 if not first_chunk_sent:
                     total_first_latency = time.time() - start_stream_time
@@ -244,17 +225,9 @@ async def chat_stream(request: Request, _auth=Depends(_verify_auth)):
                           f"(TTS took {tts_elapsed:.2f}s, rate={sample_rate}Hz)", flush=True)
                     first_chunk_sent = True
 
-                # Stream the remaining (post-overlap) audio in 1024-sample chunks
+                # Stream this clause's audio in 1024 float32 sample chunks
                 for i in range(0, len(tts_audio), 1024):
                     yield tts_audio[i:i + 1024].tobytes()
-
-                # Save the tail of this clause for cross-fading with the next one
-                _prev_tail = tts_audio[-fade_len:] if len(tts_audio) > fade_len else tts_audio.copy()
-
-            # Flush the final tail (no next clause to cross-fade with)
-            if _prev_tail is not None and len(_prev_tail) > 0:
-                for i in range(0, len(_prev_tail), 1024):
-                    yield _prev_tail[i:i + 1024].tobytes()
 
             # After generation completes, update the assistant chat history
             full_response = " ".join(full_response_parts).strip()
@@ -267,6 +240,8 @@ async def chat_stream(request: Request, _auth=Depends(_verify_auth)):
 
         except Exception as e:
             print(f"[Server Stream Error] Exception during streaming: {e}", flush=True)
+            import traceback
+            traceback.print_exc()
             if chat_history and chat_history[-1]["role"] == "user":
                 chat_history.pop()
 
