@@ -199,13 +199,54 @@ class OfflineTTSHandler:
         return waveform, sample_rate
 
     def _clean_text(self, text):
-        """Helper to sanitize text for TTS."""
+        """Helper to sanitize text for TTS with advanced Turkish normalization."""
         # Clean markdown characters to prevent literal pronunciation (e.g. asterisks as "yıldız")
         text = text.replace("*", "").replace("_", "").replace("#", "").replace("`", "")
+        
         # Replace soft g (ğ/Ğ) with g/G to prevent the TTS engine from saying "yumuşak ge"
         text = text.replace("ğ", "g").replace("Ğ", "G")
+        
+        # Replace symbols with words
+        symbols = {
+            "&": " ve ",
+            "@": " et ",
+            "+": " artı ",
+            "=": " eşittir ",
+            "₺": " Türk Lirası ",
+            "$": " Dolar ",
+            "€": " Avro ",
+            "/": " veya ",
+            "%": " yüzde ",
+        }
+        for sym, replacement in symbols.items():
+            text = text.replace(sym, replacement)
+            
+        # Phonetic replacements for common abbreviations using regex word boundaries
+        abbreviations = {
+            r"\bİTÜ\b": "İtü",
+            r"\bAI\b": "yapay zeka",
+            r"\bLLM\b": "el el em",
+            r"\bTTS\b": "ses sentezi",
+            r"\bASR\b": "ses tanıma",
+            r"\bvs\b\.?": "ve saire",
+            r"\bvb\b\.?": "ve benzeri",
+            r"\bYKS\b": "ye ke se",
+            r"\bTL\b": "Türk Lirası",
+            r"\bPDF\b": "pe de fe",
+            r"\bAPI\b": "a pi ay",
+            r"\bUI\b": "yu ay",
+            r"\bCV\b": "si vi",
+        }
+        for pattern, replacement in abbreviations.items():
+            text = re.sub(pattern, replacement, text)
+            
         # Replace common symbols or punctuation
         text = text.replace(";", ".").replace(":", ".").replace("-", " ")
+        
         # Strip brackets
         text = re.sub(r'[{}\[\]\(\)<>]', '', text)
+        
+        # Normalize double spaces
+        text = re.sub(r'\s+', ' ', text)
+        
         return text.strip()
