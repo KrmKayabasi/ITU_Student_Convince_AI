@@ -245,9 +245,11 @@ class AudioHandler:
         """
         # Resample incoming audio if its sample rate doesn't match the stream's sample rate (16kHz)
         if sample_rate != self.sample_rate and len(audio_data) > 0:
-            import scipy.signal
-            num_samples = int(len(audio_data) * self.sample_rate / sample_rate)
-            audio_data = scipy.signal.resample(audio_data, num_samples).astype(np.float32)
+            duration = len(audio_data) / sample_rate
+            dst_size = max(1, int(round(duration * self.sample_rate)))
+            src_x = np.linspace(0.0, duration, len(audio_data), endpoint=False)
+            dst_x = np.linspace(0.0, duration, dst_size, endpoint=False)
+            audio_data = np.interp(dst_x, src_x, audio_data).astype(np.float32)
 
         playback_idx = 0
         audio_len = len(audio_data)
