@@ -1,7 +1,7 @@
 # Optimized Speech Server Dockerfile for Dual NVIDIA H200 GPUs.
 # Uses NVIDIA's PyTorch NGC base container, pre-configured with CUDA 12, PyTorch, cuDNN, and NCCL.
 
-FROM nvcr.io/nvidia/pytorch:24.03-py3
+FROM nvcr.io/nvidia/pytorch:24.08-py3
 
 WORKDIR /workspace
 
@@ -13,7 +13,7 @@ RUN pip install --no-cache-dir \
     numpy \
     scipy \
     soundfile \
-    "transformers<4.47.0" \
+    transformers \
     accelerate \
     sounddevice
 
