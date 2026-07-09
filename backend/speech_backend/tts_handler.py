@@ -1,3 +1,4 @@
+import math
 import os
 import re
 import time
@@ -8,9 +9,33 @@ class OfflineTTSHandler:
         self.model_id = model_id
         self.device = device
         self.use_sherpa = False
+        backend = os.environ.get("TURKISH_TTS_BACKEND", "").lower()
+        self.use_supertonic = model_id == "supertonic" or backend == "supertonic"
+        self.use_dummy = model_id == "dummy" or backend == "dummy"
         self.use_xtts = (model_id == "xtts")
         
-        if self.use_xtts:
+        if self.use_supertonic:
+            print("[TTS] AIme Supertonic Turkish backend yükleniyor...", flush=True)
+            start_time = time.time()
+            from supertonic import TTS
+
+            self.tts = TTS(auto_download=True)
+            voice_name = os.environ.get("SUPERTONIC_VOICE", "M1")
+            voice_style_path = os.environ.get("SUPERTONIC_VOICE_STYLE_PATH")
+            if voice_style_path:
+                self.voice_style = self.tts.get_voice_style_from_path(voice_style_path)
+            else:
+                self.voice_style = self.tts.get_voice_style(voice_name=voice_name)
+            self.supertonic_lang = os.environ.get("SUPERTONIC_LANG", "tr")
+            self.supertonic_steps = int(os.environ.get("SUPERTONIC_STEPS", "5"))
+            self.supertonic_speed = float(os.environ.get("SUPERTONIC_SPEED", "1.1"))
+            self.supertonic_max_chunk_length = int(os.environ.get("SUPERTONIC_MAX_CHUNK_LENGTH", "160"))
+            print(f"[TTS] Supertonic backend {time.time() - start_time:.2f} saniyede yüklendi.", flush=True)
+
+        elif self.use_dummy:
+            print("[TTS] AIme dummy TTS backend etkin.", flush=True)
+
+        elif self.use_xtts:
             print("[TTS] Çevrimdışı Coqui XTTS v2 yükleniyor...", flush=True)
             start_time = time.time()
 
@@ -143,6 +168,10 @@ class OfflineTTSHandler:
                         debug=False,
                     )
                 )
+                self.sherpa_onnx = sherpa_onnx
+                self.sherpa_sid = int(os.environ.get("SHERPA_TTS_SID", "0"))
+                self.sherpa_speed = float(os.environ.get("SHERPA_TTS_SPEED", "1.0"))
+                self.sherpa_silence_scale = float(os.environ.get("SHERPA_TTS_SILENCE_SCALE", "0.2"))
                 self.tts = sherpa_onnx.OfflineTts(self.tts_config)
                 print(f"[TTS] ONNX Model {time.time() - start_time:.2f} saniyede başarıyla yüklendi.", flush=True)
             else:
@@ -170,8 +199,10 @@ class OfflineTTSHandler:
         This is determined at init time from the backend type so the server
         can set the correct X-Sample-Rate header before any synthesis occurs.
         """
-        if self.use_xtts:
+        if self.use_xtts or self.use_dummy:
             return 24000
+        if self.use_supertonic:
+            return 44100
         if self.use_sherpa:
             return 22050  # Piper VITS (tr_TR-dfki-medium.onnx)
         # MMS PyTorch fallback — try model config, default to 16000
@@ -185,7 +216,7 @@ class OfflineTTSHandler:
         Returns (audio_data, sample_rate)
         """
         if not text.strip():
-            return None, 24000 if self.use_xtts else (22050 if self.use_sherpa else 16000)
+            return None, self.sample_rate
             
         print(f"[TTS] Metin sese dönüştürülüyor: '{text}'", flush=True)
         start_time = time.time()
@@ -193,7 +224,25 @@ class OfflineTTSHandler:
         # Clean text
         clean_text = self._clean_text(text)
         
-        if self.use_xtts:
+        if self.use_supertonic:
+            wav, _duration = self.tts.synthesize(
+                text=clean_text,
+                lang=self.supertonic_lang,
+                voice_style=self.voice_style,
+                total_steps=self.supertonic_steps,
+                speed=self.supertonic_speed,
+                max_chunk_length=self.supertonic_max_chunk_length,
+                silence_duration=0.05,
+                verbose=False,
+            )
+            waveform = np.asarray(wav).reshape(-1).astype(np.float32)
+            sample_rate = 44100
+        elif self.use_dummy:
+            duration = max(0.2, 0.06 * len(clean_text))
+            t = np.linspace(0.0, duration, int(24000 * duration), endpoint=False)
+            waveform = (0.15 * np.sin(2.0 * math.pi * 220.0 * t)).astype(np.float32)
+            sample_rate = 24000
+        elif self.use_xtts:
             # Generate via Coqui XTTS v2
             try:
                 wav = self.tts.tts(
@@ -207,8 +256,16 @@ class OfflineTTSHandler:
                 print(f"[TTS Error] XTTS Sentez Hatası: {e}", flush=True)
                 return None, 24000
         elif self.use_sherpa:
-            # Generate via sherpa-onnx (ONNX Runtime)
-            audio = self.tts.generate(clean_text)
+            # Generate via sherpa-onnx (ONNX Runtime), using the same runtime
+            # controls exposed by AIme's Turkish TTS service.
+            if hasattr(self.sherpa_onnx, "GenerationConfig"):
+                gen_config = self.sherpa_onnx.GenerationConfig()
+                gen_config.sid = self.sherpa_sid
+                gen_config.speed = self.sherpa_speed
+                gen_config.silence_scale = self.sherpa_silence_scale
+                audio = self.tts.generate(clean_text, gen_config)
+            else:
+                audio = self.tts.generate(clean_text)
             waveform = np.array(audio.samples, dtype=np.float32)
             sample_rate = audio.sample_rate
             # Defensive clipping: VITS decoders can occasionally produce
