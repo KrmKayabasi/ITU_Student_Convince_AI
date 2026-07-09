@@ -34,10 +34,15 @@ from PyQt6.QtCore import Qt, QTimer, QProcess
 import torch
 _orig_torch_load = torch.load
 def _patched_torch_load(*args, **kwargs):
-    if "weights_only" not in kwargs:
-        kwargs["weights_only"] = False
+    kwargs["weights_only"] = False
     return _orig_torch_load(*args, **kwargs)
 torch.load = _patched_torch_load
+
+try:
+    import torch.torch_version
+    torch.serialization.add_safe_globals([torch.torch_version.TorchVersion])
+except Exception:
+    pass
 from PyQt6.QtGui import QImage, QPixmap
 from PyQt6.QtWidgets import (
     QApplication,
