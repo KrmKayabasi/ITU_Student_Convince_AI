@@ -295,17 +295,13 @@ class ResponseGeneratorWorker(QThread):
             except queue.Empty:
                 outdata[:, 0] = 0
 
-        # Create output playback stream matching server output (24000 Hz)
+        # Create output playback stream.  The sample rate is read from the
+        # server's X-Sample-Rate response header so it always matches the
+        # actual TTS output (Piper VITS = 22050 Hz, XTTS = 24000 Hz, etc.).
+        # Falls back to 24000 for backward compatibility with servers that
+        # don't send the header.
         play_stream = None
         try:
-            play_stream = sd.OutputStream(
-                samplerate=24000,
-                channels=1,
-                callback=play_callback,
-                blocksize=512,
-            )
-            play_stream.start()
-
             # Stream playout chunk-by-chunk from speech server POST request
             headers = self._make_headers()
             with httpx.Client(timeout=60.0) as client:
@@ -321,6 +317,19 @@ class ResponseGeneratorWorker(QThread):
                     if response.status_code != 200:
                         self.status_changed.emit("Server Error (Idle)")
                         return
+
+                    # ── Read actual sample rate from server header ──────────
+                    sample_rate = int(response.headers.get("X-Sample-Rate", "24000"))
+                    print(f"[Client] Server reports sample rate: {sample_rate} Hz", flush=True)
+
+                    # Build the output stream NOW so it matches the actual rate
+                    play_stream = sd.OutputStream(
+                        samplerate=sample_rate,
+                        channels=1,
+                        callback=play_callback,
+                        blocksize=512,
+                    )
+                    play_stream.start()
 
                     self.status_changed.emit("Speaking...")
                     for chunk in response.iter_bytes(chunk_size=1024 * 4):

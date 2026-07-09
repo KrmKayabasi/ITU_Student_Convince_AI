@@ -143,6 +143,22 @@ class OfflineTTSHandler:
                     
                 print(f"[TTS] PyTorch model {time.time() - start_time:.2f} saniyede başarıyla yüklendi.", flush=True)
 
+    @property
+    def sample_rate(self) -> int:
+        """Return the native sample rate of the loaded TTS backend.
+
+        This is determined at init time from the backend type so the server
+        can set the correct X-Sample-Rate header before any synthesis occurs.
+        """
+        if self.use_xtts:
+            return 24000
+        if self.use_sherpa:
+            return 22050  # Piper VITS (tr_TR-dfki-medium.onnx)
+        # MMS PyTorch fallback — try model config, default to 16000
+        if hasattr(self, 'model') and hasattr(self.model, 'config'):
+            return getattr(self.model.config, 'sampling_rate', 16000)
+        return 16000
+
     def synthesize(self, text):
         """
         Synthesizes Turkish text into speech offline.
