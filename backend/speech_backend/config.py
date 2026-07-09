@@ -14,9 +14,11 @@ QUANTIZATION = os.environ.get("GEMMA_QUANTIZATION", "none")
 ENABLE_THINKING = os.environ.get("ENABLE_THINKING", "0") == "1"
 
 # Text-to-Speech Model Config
+# Use "xtts" for Coqui XTTS v2 (character-based, native Turkish, no espeak-ng).
+# Set TTS_MODEL_ID env var to a local path for Piper VITS (sherpa-onnx).
 TTS_MODEL_ID = os.environ.get(
     "TTS_MODEL_ID",
-    os.path.join(os.path.dirname(__file__), "vits-piper-tr_TR-fahrettin-medium"),
+    "xtts",
 )
 
 # Device configuration: "mps" (Mac GPU), "cuda", or "cpu".

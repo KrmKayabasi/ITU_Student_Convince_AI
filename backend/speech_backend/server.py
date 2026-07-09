@@ -174,67 +174,75 @@ async def chat_stream(request: Request, _auth=Depends(_verify_auth)):
         else:
             break
         
-    # 3. Generate full LLM response → synthesize in ONE pass → stream audio
+    # 3. Run Cascaded LLM-to-TTS Streaming
     async def cascaded_audio_generator():
         global chat_history
+        full_response_parts = []
 
-        print(f"[Server] Running LLM inference...", flush=True)
-        llm_start = time.time()
+        print(f"[Server] Running Cascaded LLM-to-TTS Streaming...", flush=True)
+        start_stream_time = time.time()
+        first_chunk_sent = False
+
+        # ── Inter-clause silence ────────────────────────────────────────────
+        # Rather than cross-fading (which duplicates already-streamed audio and
+        # creates stutter/pop artifacts), we insert a short silence between
+        # independently-synthesized TTS clauses.  VITS models naturally decay
+        # to near-zero at utterance boundaries (final phoneme $ maps to silence),
+        # so the raw concatenation is already smooth.  The silence just adds a
+        # natural pause between sentences.
+        _SILENCE_SAMPLES = 0  # will be set on first clause from actual sample rate
 
         try:
-            # ── Step A: Collect the FULL text response from Gemma ──────────
-            # Accumulate ALL clauses from the streamer, then synthesize the
-            # complete text at once.  espeak-ng gets full sentence context
-            # for natural Turkish prosody — no clause-boundary artifacts.
-            full_response_parts = []
+            # Iterate over text clauses generated in real-time by Gemma
             for clause in gemma.generate_response_stream(chat_history, []):
                 clause = clause.strip()
-                if clause:
-                    full_response_parts.append(clause)
-                    print(f"[Server] Clause: '{clause[:80]}...'"
-                          if len(clause) > 80 else
-                          f"[Server] Clause: '{clause}'",
-                          flush=True)
+                if not clause:
+                    continue
 
-            response_text = " ".join(full_response_parts).strip()
-            llm_elapsed = time.time() - llm_start
+                print(f"[Server Stream] Got clause: '{clause}'", flush=True)
+                full_response_parts.append(clause)
 
-            if not response_text:
-                if chat_history and chat_history[-1]["role"] == "user":
-                    chat_history.pop()
-                return
+                # Synthesize TTS for this clause immediately
+                tts_start = time.time()
+                tts_audio, sample_rate = tts.synthesize(clause)
+                tts_elapsed = time.time() - tts_start
 
-            print(f"[Server] Full response ({llm_elapsed:.2f}s, {len(response_text)} chars): "
-                  f"'{response_text[:150]}...'"
-                  if len(response_text) > 150 else
-                  f"[Server] Full response ({llm_elapsed:.2f}s): '{response_text}'",
-                  flush=True)
+                if tts_audio is None or len(tts_audio) == 0:
+                    continue
 
-            # ── Step B: Synthesize the ENTIRE response at once ─────────────
-            print(f"[Server] Synthesizing TTS...", flush=True)
-            tts_start = time.time()
-            tts_audio, sample_rate = tts.synthesize(response_text)
-            tts_elapsed = time.time() - tts_start
+                # ── Inter-clause silence padding ────────────────────────────
+                if _SILENCE_SAMPLES == 0:
+                    _SILENCE_SAMPLES = int(sample_rate * 0.15)  # 150ms pause between clauses
+                    # Round up to a multiple of 1024 so every chunk is exactly
+                    # 4096 bytes (1024 float32) — prevents short final chunks
+                    # that trigger micro-fade artifacts on the client.
+                    _SILENCE_SAMPLES = ((_SILENCE_SAMPLES + 1023) // 1024) * 1024
+                if first_chunk_sent and _SILENCE_SAMPLES > 0:
+                    silence = np.zeros(_SILENCE_SAMPLES, dtype=np.float32)
+                    for i in range(0, len(silence), 1024):
+                        yield silence[i:i + 1024].tobytes()
 
-            if tts_audio is None or len(tts_audio) == 0:
-                if chat_history and chat_history[-1]["role"] == "user":
-                    chat_history.pop()
-                return
+                if not first_chunk_sent:
+                    total_first_latency = time.time() - start_stream_time
+                    print(f"[Server Stream] First audio chunk ready in {total_first_latency:.2f}s! "
+                          f"(TTS took {tts_elapsed:.2f}s, rate={sample_rate}Hz)", flush=True)
+                    first_chunk_sent = True
 
-            total_latency = time.time() - llm_start
-            print(f"[Server] TTS ready in {tts_elapsed:.2f}s "
-                  f"(total {total_latency:.2f}s, {len(tts_audio)} samples @ {sample_rate}Hz)",
-                  flush=True)
+                # Stream this clause's audio in 1024 float32 sample chunks
+                for i in range(0, len(tts_audio), 1024):
+                    yield tts_audio[i:i + 1024].tobytes()
 
-            # ── Step C: Stream audio in 1024-sample chunks ─────────────────
-            for i in range(0, len(tts_audio), 1024):
-                yield tts_audio[i:i + 1024].tobytes()
+            # After generation completes, update the assistant chat history
+            full_response = " ".join(full_response_parts).strip()
+            print(f"[Server Stream] Generation finished. Full response: '{full_response}'", flush=True)
 
-            # ── Step D: Update chat history ────────────────────────────────
-            chat_history.append({"role": "assistant", "content": response_text})
+            if full_response:
+                chat_history.append({"role": "assistant", "content": full_response})
+            else:
+                chat_history.pop()
 
         except Exception as e:
-            print(f"[Server Error] Exception: {e}", flush=True)
+            print(f"[Server Stream Error] Exception during streaming: {e}", flush=True)
             import traceback
             traceback.print_exc()
             if chat_history and chat_history[-1]["role"] == "user":
