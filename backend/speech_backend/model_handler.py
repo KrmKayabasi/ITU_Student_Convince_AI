@@ -78,7 +78,8 @@ class GemmaAudioProcessor:
                 self.model_id,
                 quantization_config=quantization_config,
                 torch_dtype=torch_dtype,
-                device_map="auto"
+                device_map="auto",
+                attn_implementation="eager"
             )
             
             print(f"[Model] PyTorch CUDA model {time.time() - start_time:.2f} saniyede başarıyla yüklendi.", flush=True)
