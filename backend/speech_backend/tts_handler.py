@@ -250,7 +250,7 @@ class OfflineTTSHandler:
             # Generate via Coqui XTTS v2
             try:
                 # Resolve speaker_wav relative to this file's directory
-                _speaker_wav = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fahrettin_test.wav")
+                _speaker_wav = os.path.join(os.path.dirname(os.path.abspath(__file__)), "xtts_test.wav")
                 wav = self.tts.tts(
                     text=clean_text,
                     speaker_wav=_speaker_wav,
