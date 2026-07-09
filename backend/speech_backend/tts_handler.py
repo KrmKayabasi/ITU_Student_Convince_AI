@@ -211,6 +211,10 @@ class OfflineTTSHandler:
             audio = self.tts.generate(clean_text)
             waveform = np.array(audio.samples, dtype=np.float32)
             sample_rate = audio.sample_rate
+            # Defensive clipping: VITS decoders can occasionally produce
+            # samples slightly outside [-1, 1] which cause DAC hard-clipping
+            # distortion.  np.clip is vectorized and adds negligible overhead.
+            waveform = np.clip(waveform, -1.0, 1.0)
         else:
             # Generate via PyTorch
             import torch
@@ -249,58 +253,80 @@ class OfflineTTSHandler:
         return text.lower()
 
     def _clean_text(self, text):
-        """Helper to sanitize text for TTS with advanced Turkish normalization."""
-        # Convert to Turkish lowercase to prevent capitalization spelling-out bugs
-        text = self._turkish_lowercase(text)
+        “””Helper to sanitize text for TTS with advanced Turkish normalization.
 
-        # Clean markdown characters to prevent literal pronunciation (e.g. asterisks as "yıldız")
-        text = text.replace("*", "").replace("_", "").replace("#", "").replace("`", "")
-        text = text.replace("~", "").replace(">", "").replace("|", "")
-        
-        # Clean quotes and apostrophes to prevent word splitting or character reading (e.g. Günleri'ne -> Günlerine)
-        text = text.replace("'", "").replace('"', "").replace("”", "").replace("“", "").replace("’", "")
-        
-        # Replace symbols with words
+        Processing order matters — each step is documented with its reason:
+          1. Symbols → words (before case changes)
+          2. Abbreviations → expansions (before Turkish lowercase, so regex
+             matches uppercase forms like “API”, “AI”, “ITÜ”)
+          3. Turkish lowercase (İ→i, I→ı, etc.) — AFTER abbreviations so
+             they can match against the original case
+          4. Markdown stripping — AFTER abbreviations so underscores don’t
+             break compound abbreviations like “LLM_API”
+          5. Punctuation normalization
+          6. Bracket/URL cleanup
+          7. Whitespace normalization
+        “””
+        # ── Step 1: Replace symbols with words (before case changes) ──────────
         symbols = {
-            "&": " ve ",
-            "@": " et ",
-            "+": " artı ",
-            "=": " eşittir ",
-            "₺": " Türk Lirası ",
-            "$": " Dolar ",
-            "€": " Avro ",
-            "/": " veya ",
-            "%": " yüzde ",
+            “&”: “ ve “,
+            “@”: “ et “,
+            “+”: “ artı “,
+            “=”: “ eşittir “,
+            “₺”: “ Türk Lirası “,
+            “$”: “ Dolar “,
+            “€”: “ Avro “,
+            “/”: “ veya “,
+            “%”: “ yüzde “,
         }
         for sym, replacement in symbols.items():
             text = text.replace(sym, replacement)
-            
-        # Phonetic replacements for common abbreviations (in lowercase)
-        abbreviations = {
-            r"\bitü\b": "itü",
-            r"\bai\b": "yapay zeka",
-            r"\bllm\b": "el el em",
-            r"\btts\b": "ses sentezi",
-            r"\basr\b": "ses tanıma",
-            r"\bvs\b\.?": "ve saire",
-            r"\bvb\b\.?": "ve benzeri",
-            r"\byks\b": "ye ke se",
-            r"\btl\b": "Türk Lirası",
-            r"\bpdf\b": "pe de fe",
-            r"\bapi\b": "a pi ay",
-            r"\bui\b": "yu ay",
-            r"\bcv\b": "si vi",
+
+        # ── Step 2: Phonetic abbreviations (BEFORE Turkish lowercase!) ────────
+        # Uppercase abbreviations like “API”, “AI”, “ITÜ” must match before
+        # Turkish lowercase converts I→ı and İ→i.  We run once case-insensitively
+        # then again on the lowercased result to catch already-lowercase forms.
+        abbreviations_ci = {
+            r”\bapi\b”: “a pi ay”,
+            r”\bai\b”: “yapay zeka”,
+            r”\bllm\b”: “el el em”,
+            r”\btts\b”: “ses sentezi”,
+            r”\basr\b”: “ses tanıma”,
+            r”\bui\b”: “yu ay”,
+            r”\bcv\b”: “si vi”,
+            r”\bpdf\b”: “pe de fe”,
+            r”\byks\b”: “ye ke se”,
+            r”\bitü\b”: “i tü”,       # spelled out: “İTÜ” as letters
+            r”\btl\b”: “türk lirası”,
+            r”\bvs\b\.?”: “ve saire”,
+            r”\bvb\b\.?”: “ve benzeri”,
         }
-        for pattern, replacement in abbreviations.items():
-            text = re.sub(pattern, replacement, text)
-            
-        # Replace common symbols or punctuation
-        text = text.replace(";", ".").replace(":", ".").replace("-", " ")
-        
-        # Strip brackets
-        text = re.sub(r'[{}\[\]\(\)<>]', '', text)
-        
-        # Normalize double spaces
-        text = re.sub(r'\s+', ' ', text)
-        
+        for pattern, replacement in abbreviations_ci.items():
+            text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
+
+        # ── Step 3: Turkish lowercase (AFTER abbreviations) ───────────────────
+        text = self._turkish_lowercase(text)
+
+        # ── Step 4: Strip markdown characters ─────────────────────────────────
+        text = text.replace(“*”, “”).replace(“_”, “”).replace(“#”, “”).replace(“`”, “”)
+        text = text.replace(“~”, “”).replace(“>”, “”).replace(“|”, “”)
+
+        # ── Step 5: Quotes and apostrophes → space (preserves word boundaries) ─
+        text = text.replace(“’”, “ “).replace(‘”’, “ “).replace(““”, “ “).replace(“””, “ “).replace(“’”, “ “)
+
+        # ── Step 6: Punctuation normalization ─────────────────────────────────
+        # Only replace COLON and SEMICOLON with period.
+        # HYPHEN: keep intra-word hyphens (ön-lisans, Türk-Alman) but replace
+        # standalone dashes (em-dash, en-dash, or hyphen with spaces around it).
+        text = text.replace(“;”, “.”).replace(“:”, “.”)
+        text = text.replace(“—“, “ “).replace(“–“, “ “)   # em-dash, en-dash
+        text = re.sub(r’\s+-\s+’, ‘ ‘, text)  # standalone hyphens only
+
+        # ── Step 7: Strip brackets — add space to prevent URL concatenation ───
+        # “[İTÜ](https://itu.edu.tr)” → “İTÜ https://itu.edu.tr”
+        text = re.sub(r’[\[\](){}<>]’, ‘ ‘, text)
+
+        # ── Step 8: Normalize whitespace ──────────────────────────────────────
+        text = re.sub(r’\s+’, ‘ ‘, text)
+
         return text.strip()

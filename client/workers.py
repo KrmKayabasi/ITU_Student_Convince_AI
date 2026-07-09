@@ -289,11 +289,24 @@ class ResponseGeneratorWorker(QThread):
                 data = playback_queue.get_nowait()
                 if len(data) < frames:
                     outdata[:len(data), 0] = data
-                    outdata[len(data):, 0] = 0
+                    # ── Micro-fade to prevent DC click from zero-padding ──────
+                    # An abrupt jump from the last sample to 0.0 creates a
+                    # broadband transient (audible pop).  A 16-sample linear
+                    # fade from the last value to zero eliminates it.
+                    n_pad = frames - len(data)
+                    if n_pad > 0 and len(data) > 0:
+                        last_val = float(data[-1])
+                        fade_len = min(n_pad, 16)
+                        for j in range(fade_len):
+                            outdata[len(data) + j, 0] = last_val * (1.0 - (j + 1) / fade_len)
+                        # Remaining samples (if any) stay at 0.0
+                        outdata[len(data) + fade_len:, 0] = 0.0
+                    else:
+                        outdata[len(data):, 0] = 0.0
                 else:
                     outdata[:, 0] = data[:frames]
             except queue.Empty:
-                outdata[:, 0] = 0
+                outdata[:, 0] = 0.0
 
         # Create output playback stream.  The sample rate is read from the
         # server's X-Sample-Rate response header so it always matches the

@@ -343,8 +343,12 @@ class GemmaAudioProcessor:
             # single-word clauses cause syllabic artifacts ("hecelenme").
             # Exception: short complete utterances ending in terminal punctuation
             # (like "Evet.", "Hayır.", "Teşekkürler.") are yielded immediately.
+            #
+            # Anti-pattern: periods inside numbers ("533.14", "91.") must NOT
+            # trigger a split.  We check: if the character before the period is
+            # a digit, treat it as a decimal/ordinal, not a sentence boundary.
             _SENTENCE_END = {".", "!", "?"}
-            _MIN_CLAUSE_LEN = 8   # below this, keep buffering (unless stream ends or terminal punc)
+            _MIN_CLAUSE_LEN = 8
             _TERMINAL = {".", "!", "?"}
 
             sentence_buffer = ""
@@ -356,9 +360,23 @@ class GemmaAudioProcessor:
 
                 sentence_buffer += clean_chunk
 
-                # Yield when we hit a sentence-ending marker AND the clause
-                # is long enough OR it ends with a terminal punctuation mark
-                if any(char in clean_chunk for char in _SENTENCE_END):
+                # Check if a sentence-ending marker appeared in this chunk
+                hit_sentence_end = False
+                for i, ch in enumerate(clean_chunk):
+                    if ch in _SENTENCE_END:
+                        if ch == ".":
+                            # Don't split on periods inside numbers:
+                            #   "533.14" → digit before '.' → keep buffering
+                            #   "91."    → digit before '.' → keep buffering
+                            #   "1. Madde" → digit before '.' → keep buffering
+                            #   "Evet."  → letter before '.' → split
+                            char_before = clean_chunk[i - 1] if i > 0 else (sentence_buffer[-1] if sentence_buffer else '')
+                            if char_before and char_before.isdigit():
+                                continue  # numeric period — don't split
+                        hit_sentence_end = True
+                        break
+
+                if hit_sentence_end:
                     clause = sentence_buffer.strip()
                     if clause:
                         ends_terminal = clause[-1] in _TERMINAL
