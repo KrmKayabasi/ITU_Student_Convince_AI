@@ -80,7 +80,7 @@ def update_session(session: SessionData, raw: RawSignals) -> None:
         elapsed = now - (session.calibration_started_at or now)
         if elapsed >= config.CALIBRATION_SECONDS:
             samples = session.calibration_lean_samples or [0.0]
-            session.baseline_lean = float(np.mean(samples))
+            session.baseline_lean = float(sum(samples) / len(samples))
             session.state = SessionState.ACTIVE
         else:
             _update_focus(session, raw, now)
@@ -100,11 +100,11 @@ def update_session(session: SessionData, raw: RawSignals) -> None:
 
 def _score_components(session: SessionData, raw: RawSignals) -> tuple[float, float, float, float, float]:
     """Anlik (attention, openness, energy) skoru + ara degerler."""
-    smoothed_lean = float(np.mean(session.lean_history)) if session.lean_history else 0.0
+    smoothed_lean = float(sum(session.lean_history) / len(session.lean_history)) if session.lean_history else 0.0
     baseline = session.baseline_lean if session.baseline_lean is not None else 0.0
     delta_lean = smoothed_lean - baseline
 
-    avg_eye_contact = float(np.mean(session.eye_history)) if session.eye_history else 0.5
+    avg_eye_contact = float(sum(session.eye_history) / len(session.eye_history)) if session.eye_history else 0.5
 
     spine_ratio = raw.spine_ratio if raw.spine_ratio is not None else 0.75
     spine_score = 1.0 if spine_ratio > config.SPINE_UPRIGHT_THRESHOLD else 0.5

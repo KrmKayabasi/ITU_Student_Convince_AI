@@ -34,8 +34,8 @@ _RAW_TO_CANONICAL = {
     "Surprise": "surprise",
 }
 _IMG_SIZE = 224
-_MEAN = (0.485, 0.456, 0.406)
-_STD = (0.229, 0.224, 0.225)
+_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
+_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 _INPUT_NAME = "input"
 
 _session_lock = threading.Lock()
@@ -58,9 +58,9 @@ def _get_ort_session() -> ort.InferenceSession:
 def _preprocess(face_bgr: np.ndarray) -> np.ndarray:
     rgb = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2RGB)
     resized = cv2.resize(rgb, (_IMG_SIZE, _IMG_SIZE)).astype(np.float32) / 255.0
-    for i in range(3):
-        resized[..., i] = (resized[..., i] - _MEAN[i]) / _STD[i]
-    return resized.transpose(2, 0, 1)[np.newaxis, ...].astype(np.float32)
+    # Vectorized channel normalization using broadcasting (no Python loop overhead)
+    normalized = (resized - _MEAN) / _STD
+    return normalized.transpose(2, 0, 1)[np.newaxis, ...].astype(np.float32)
 
 
 def predict_emotion(face_bgr: np.ndarray) -> Tuple[str, Dict[str, float]]:
