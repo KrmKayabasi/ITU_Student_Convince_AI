@@ -6,9 +6,10 @@ Follow these instructions to set up your virtual environments, install dependenc
 
 ## 🛠️ Prerequisites
 
-- **Python**: Version 3.12 (recommended).
-- **Docker Desktop**: Required to run the CV scoring pipeline container.
-- **uv**: The fast Python package installer (`curl -LsSf https://astral.sh/uv | sh`).
+- **Python 3.12** — for CV pipeline and desktop client (project `.venv`, managed by `uv`)
+- **Python 3.11** — for the speech server (XTTS v2 requires Python < 3.12). Uses the venv at `Turkish_Speech_to_Speech/venv/`
+- **Docker Desktop**: Required to run the CV scoring pipeline container
+- **uv**: The fast Python package installer (`curl -LsSf https://astral.sh/uv | sh`)
 
 ---
 
@@ -16,7 +17,7 @@ Follow these instructions to set up your virtual environments, install dependenc
 
 ### 1. Unified Dependency Setup
 
-We use a single unified virtual environment (`.venv`) at the root of the project to run the CV pipeline, speech backend, and the PyQt6 client.
+We use a single unified virtual environment (`.venv`, Python 3.12) at the root of the project to run the CV pipeline and the PyQt6 client.
 
 ```bash
 # Clone the repository
@@ -37,26 +38,33 @@ Follow this sequence to launch the entire system:
 
 ### Step 1: Deploy the Speech Server
 
-**Option A — Remote H200 GPU Server (production):**
+The speech server uses the **Python 3.11** venv from the Turkish_Speech_to_Speech reference repo, which has Coqui XTTS v2 installed (XTTS requires Python < 3.12).
 
-On the remote NVIDIA H200 GPU server, run Docker Compose to build and launch the unquantized Gemma 12B, Whisper Large v3 Turbo, and Piper VITS stack with full multi-GPU hardware acceleration:
-
-```bash
-cd backend/speech_backend
-docker compose -f docker-compose.server.yml up -d --build
-```
-
-The server listens at `http://<H200-SERVER-IP>:8002`.
-
-**Option B — Local machine (development/Mac):**
+**Start the server:**
 
 ```bash
 cd ITU_Student_Convince_AI
-source .venv/bin/activate
-python backend/speech_backend/server.py
+
+# Start with XTTS v2 (default) — Python 3.11 venv
+./scripts/start_cascaded_speech_server.sh
 ```
 
-The server listens at `http://localhost:8002`.
+The server listens at `http://localhost:8002`. You'll see messages for Whisper, Gemma 4, and XTTS v2 loading.
+
+**Alternative TTS backends (set before starting):**
+```bash
+# Piper VITS (espeak-based, 22050 Hz):
+export TTS_MODEL_ID="vits-piper-tr_TR-fahrettin-medium"
+./scripts/start_cascaded_speech_server.sh
+
+# Supertonic (Turkish-native, 44100 Hz):
+export TURKISH_TTS_BACKEND="supertonic"
+./scripts/start_cascaded_speech_server.sh
+
+# Dummy (sine wave, for testing audio pipeline):
+export TURKISH_TTS_BACKEND="dummy"
+./scripts/start_cascaded_speech_server.sh
+```
 
 ### Step 2: Start the CV Ingestion Backend
 
@@ -77,9 +85,9 @@ Alternatively, you can click the **"Start CV Pipeline"** button inside the Deskt
 # Local speech server:
 uv run python client/desktop_client.py
 
-# Remote H200 speech server with auth:
+# Remote speech server with auth:
 uv run python client/desktop_client.py \
-    --speech-server http://<H200-SERVER-IP>:8002 \
+    --speech-server http://<SERVER-IP>:8002 \
     --auth-token YOUR_TOKEN
 ```
 
@@ -87,7 +95,9 @@ uv run python client/desktop_client.py \
 1. Opens the camera display with live gaze/posture/emotion tracking
 2. Captures user voice boundaries using Silero VAD (sherpa-onnx)
 3. Runs DiariZen speaker diarisation locally
-4. Posts audio turns to the speech server and streams back the 24kHz audio response
+4. Posts audio turns to the speech server
+5. Reads `X-Sample-Rate` header and creates playback stream at the correct rate
+6. Plays back the streamed audio response with byte-aligned reassembly
 
 ### Step 4: Standalone Speech Client (Terminal-Only)
 
@@ -113,7 +123,7 @@ Authentication is **off by default** for development convenience. To enable it:
 export SPEECH_SERVER_TOKEN=$(openssl rand -hex 32)
 
 # Start the server (it reads SPEECH_SERVER_TOKEN from env)
-python backend/speech_backend/server.py
+./scripts/start_cascaded_speech_server.sh
 ```
 
 ### CV Pipeline
@@ -143,21 +153,67 @@ python backend/speech_backend/client.py
 
 ---
 
+## 🔧 TTS Configuration
+
+### Coqui XTTS v2 (default)
+
+```bash
+# No extra config needed — this is the default
+# Uses fahrettin speaker voice (xtts_test.wav in speech_backend/)
+# Sample rate: 24000 Hz
+./scripts/start_cascaded_speech_server.sh
+```
+
+### Piper VITS (sherpa-onnx)
+
+Requires the model directory to be present:
+
+```bash
+# Make sure the model is downloaded:
+ls backend/speech_backend/vits-piper-tr_TR-fahrettin-medium/
+
+# Switch to Piper:
+export TTS_MODEL_ID="vits-piper-tr_TR-fahrettin-medium"
+./scripts/start_cascaded_speech_server.sh
+```
+
+Piper-specific tuning (optional):
+```bash
+export SHERPA_TTS_SPEED="1.0"
+export SHERPA_TTS_SILENCE_SCALE="0.2"
+```
+
+### Supertonic
+
+```bash
+export TURKISH_TTS_BACKEND="supertonic"
+export SUPERTONIC_VOICE="M1"
+export SUPERTONIC_SPEED="1.1"
+./scripts/start_cascaded_speech_server.sh
+```
+
+---
+
 ## 🔧 Configuration Reference
 
 ### Speech Backend (`backend/speech_backend/config.py`)
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `TTS_MODEL_ID` | `xtts` | TTS backend: `xtts` (default), Piper path, `supertonic`, `dummy` |
+| `TURKISH_TTS_BACKEND` | (empty) | Alt: `supertonic`, `dummy` |
 | `GEMMA_MODEL_ID` | `google/gemma-4-e4b-it` | Model ID (server mode: `google/gemma-4-12B-it`) |
 | `GEMMA_QUANTIZATION` | `none` | Quantization level: `none`, `int4`, `int8` |
-| `DEVICE` | `mps` (Mac) / `cuda` (Linux) | Compute device |
-| `SPEECH_SERVER_MODE` | (empty) | When set, defaults to 12B model for server deployment |
-| `TTS_MODEL_ID` | VITS Piper path | TTS model directory or `xtts` for Coqui XTTS v2 |
-| `ENABLE_THINKING` | `0` | Set to `1` to enable Gemma chain-of-thought |
-| `PLAYBACK_INTERRUPTION_MODE` | `both` | `both`, `key_only`, `vad_only`, or `none` |
+| `DEVICE` | auto | `mps` (Mac), `cuda` (Linux), or `cpu` |
+| `SPEECH_SERVER_MODE` | (empty) | When set, defaults to 12B model |
+| `ENABLE_THINKING` | `0` | Set to `1` for chain-of-thought |
+| `PLAYBACK_INTERRUPTION_MODE` | `both` | `both`, `key_only`, `vad_only`, `none` |
 | `SERVER_HOST` | `0.0.0.0` | Bind address |
 | `SERVER_PORT` | `8002` | Listen port |
+| `SUPERTONIC_VOICE` | `M1` | Supertonic voice name |
+| `SUPERTONIC_SPEED` | `1.1` | Supertonic speed factor |
+| `SHERPA_TTS_SPEED` | `1.0` | Piper VITS speed factor |
+| `SHERPA_TTS_SILENCE_SCALE` | `0.2` | Piper silence scale |
 
 ### CV Pipeline (`backend/cv_pipeline/config.py`)
 
@@ -193,10 +249,12 @@ pytest tests/ -v
 
 | Problem | Solution |
 |---------|----------|
-| `ModuleNotFoundError: No module named 'backend'` | Run from project root with `PYTHONPATH=.` or use `uv run python -m backend.cv_pipeline.main` |
+| `ModuleNotFoundError: No module named 'backend'` | Run from project root with `PYTHONPATH=.` or use `uv run` |
 | Camera not opening | Check `--camera-index` (try 0 or 1) |
 | `Connection refused` to speech server | Verify server is running: `curl http://localhost:8002/health` |
 | Docker container won't start | Run `docker compose ps` to check status; check logs with `docker compose logs cv-pipeline` |
-| VAD model download fails | Verify network connectivity; `silero_vad.onnx` is bundled in the repo |
 | Auth errors (401) | Set `SPEECH_SERVER_TOKEN` or `ITU_AUTH_TOKEN` matching the server, or unset both for dev mode |
-| TTS model not found | Download VITS Piper model: check `backend/speech_backend/vits-piper-tr_TR-dfki-medium/` exists |
+| XTTS fails with "No module named 'transformers'" | Must use Python 3.11 venv: `./scripts/start_cascaded_speech_server.sh` |
+| XTTS "Python >= 3.9 and < 3.12" error | Python 3.12 not supported by Coqui TTS — use the reference venv (Python 3.11) |
+| Hecelenme / spelled letters | With XTTS v2 this should not happen. If it persists, check audio pipeline (sample rate, byte alignment) |
+| XTTS slow on first load | Normal — XTTS v2 is ~1.8 GB. Subsequent loads are cached |

@@ -4,15 +4,21 @@
 >
 > Bu sprint'teki tüm görevler (T1–T12) tamamlanmıştır. Gerçek modeller (MediaPipe Face/Pose Landmarker, EmotiEffLib ONNX) entegre edilmiş, tüm sinyaller (gaze, lean, spine, arms, emotion) canlı verilerle çalışmakta, ve 137 pytest testi başarıyla geçmektedir.
 >
-> **Sprint sonrası eklenenler:**
-> - Dinamik güven skorları (hardcoded sabitler yerine veriden hesaplanan)
-> - Token-tabanlı kimlik doğrulama (opsiyonel, `SPEECH_SERVER_TOKEN` / `CV_PIPELINE_TOKEN` ile)
-> - Thread-safety iyileştirmeleri (AudioCaptureWorker lock koruması, EmotionWorker hata durumunda reset)
-> - İstemci modül ayrıştırması (`client/workers.py`, `client/metrics.py`)
-> - Config birleştirme (tek `config.py`, `server_config.py` kaldırıldı)
-> - Performans iyileştirmeleri (HTTP health check yerine subprocess polling, MLX tempfile otomatik temizleme)
+> **Sprint sonrası eklenenler (Temmuz 2026):**
+> - **Coqui XTTS v2** varsayılan TTS motoru (karakter-tabanlı, espeak-ng bağımlılığı yok, Türkçe-native)
+> - **One-pass sentez**: LLM yanıtı toplu alınıp tek seferde sentezleniyor — clause-boundary yok, doğal prozodi
+> - **Byte-aligned client**: `iter_bytes` float32 sınırlarında yeniden birleştiriliyor — TCP parçalanmasından etkilenmiyor
+> - **Dinamik güven skorları** (hardcoded sabitler yerine veriden hesaplanan)
+> - **Token-tabanlı kimlik doğrulama** (opsiyonel, `SPEECH_SERVER_TOKEN` / `CV_PIPELINE_TOKEN` ile)
+> - **Thread-safety iyileştirmeleri** (AudioCaptureWorker lock koruması, EmotionWorker hata durumunda reset)
+> - **İstemci modül ayrıştırması** (`client/workers.py`, `client/metrics.py`)
+> - **Config birleştirme** (tek `config.py`, `server_config.py` kaldırıldı)
+> - **Markdown temizleme**: System prompt'tan ve TTS çıkışından Markdown karakterleri temizleniyor
+> - **Clause splitter**: Sadece `. ! ?` ile bölünüyor — virgül ve satır sonu prozodi için cümle içinde kalıyor
+> - **Model**: `fahrettin-medium` (dfki yerine, referans repo ile aynı)
 >
 > Güncel mimari dokümantasyonu için: [`docs/ARCHITECTURE.md`](ARCHITECTURE.md)
+> Güncel kurulum talimatları için: [`docs/SETUP.md`](SETUP.md)
 
 ---
 

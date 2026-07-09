@@ -29,7 +29,7 @@ The system uses a **client-server architecture** separating lightweight native p
 │  (FastAPI :8000)         │  │                                │
 │                          │  │  Whisper Large v3 Turbo →      │
 │  MediaPipe Face/Pose     │  │  Gemma 4 12B →                │
-│  ONNX Emotion (1Hz)      │  │  Piper VITS TTS               │
+│  ONNX Emotion (1Hz)      │  │  Coqui XTTS v2 (24000 Hz)     │
 │  Session State Machine   │  │                                │
 │                          │  │  backend/speech_backend/       │
 │  backend/cv_pipeline/    │  │  server.py                     │
@@ -44,7 +44,7 @@ The system uses a **client-server architecture** separating lightweight native p
 
 | File | Role |
 |------|------|
-| `main.py` | FastAPI app: WebSocket ingest (`/stream`, `/profile`, `/focus`, `/debug`), worker orchestration, session GC |
+| `main.py` | FastAPI app: WebSocket ingest (`/stream`, `/profile`, `/focus`, `/debug`), worker orchestration, session GC, WS token auth |
 | `manager.py` | `SessionManager`: thread-safe `session_id → SessionData` registry |
 | `session.py` | `SessionData` state machine (IDLE → CALIBRATING → ACTIVE), `RawSignals` dataclass, ring buffers |
 | `processing.py` | `FrameSlot` (thread-safe drop-stale frame container), `SignalExtractor` (orchestrates all detectors) |
@@ -67,22 +67,22 @@ The system uses a **client-server architecture** separating lightweight native p
 
 | File | Role |
 |------|------|
-| `server.py` | FastAPI app: `/chat_stream`, `/reset`, `/last_turn`, `/health` with optional Bearer token auth |
-| `config.py` | Unified configuration (shared between server and standalone pipeline), all env-overridable |
-| `model_handler.py` | `GemmaAudioProcessor`: MLX (Mac) and CUDA (Linux) inference paths, streaming generation |
-| `tts_handler.py` | `OfflineTTSHandler`: XTTS v2 / Sherpa-ONNX / MMS-TTS backends with scoped monkey-patching |
-| `audio_handler.py` | `AudioHandler`: WebRTC noise suppression, Silero VAD, playout with barge-in interruption |
+| `server.py` | FastAPI app: `/chat_stream`, `/reset`, `/last_turn`, `/health` with optional Bearer token auth. **One-pass synthesis**: accumulates full LLM response, then synthesizes entire text at once |
+| `config.py` | Unified configuration (shared between server and standalone pipeline), Markdown-stripped system prompt, all env-overridable |
+| `model_handler.py` | `GemmaAudioProcessor`: MLX (Mac) and CUDA (Linux) inference paths, streaming generation. Clause splitter: splits only on `. ! ?`, commas/newlines stay inside for prosody, digit-guard prevents number-with-period splits |
+| `tts_handler.py` | `OfflineTTSHandler`: **Coqui XTTS v2** (default, 24000 Hz, character-based), Sherpa-ONNX/Piper VITS (22050 Hz, espeak-based), Supertonic, MMS-TTS, dummy (sine wave). Scoped monkey-patches restored after model load |
+| `audio_handler.py` | `AudioHandler`: WebRTC noise suppression, Silero VAD, playout with barge-in interruption, SHA-256 verified model download |
 | `pipeline.py` | Standalone speech-to-speech pipeline (alternative to client-server mode) |
 | `client.py` | Thin client for remote H200 server (audio capture → POST → stream playout) |
 | `client_config.py` | Client-side configuration (server URL, auth token, VAD params) |
-| `training/train_multimodal.py` | LoRA fine-tuning script for Gemma 4 on Turkish speech datasets |
+| `training/train_multimodal.py` | LoRA fine-tuning script for Gemma 4 on Turkish speech datasets (uses `--audio-root` instead of hardcoded paths) |
 
 ### 3. Desktop Client (`client/`)
 
 | File | Role |
 |------|------|
-| `desktop_client.py` | `MainWindow` (PyQt6): panel builders, chat bubbles, Docker controls, service health polling (~430 lines) |
-| `workers.py` | `PipelineLoaderWorker`, `AudioCaptureWorker` (thread-safe), `ResponseGeneratorWorker`, `StreamWorker` |
+| `desktop_client.py` | `MainWindow` (PyQt6): panel builders, chat bubbles, Docker controls, HTTP health polling (~430 lines) |
+| `workers.py` | `PipelineLoaderWorker`, `AudioCaptureWorker` (thread-safe), `ResponseGeneratorWorker` (reads `X-Sample-Rate` header, byte-aligned reassembly), `StreamWorker` (auth token support) |
 | `metrics.py` | `format_metrics()`: renders live CV metrics as a human-readable text block |
 
 ### 4. Test Suite (`tests/`)
@@ -106,6 +106,50 @@ tests/
 
 ---
 
+## 🔧 TTS Architecture — Coqui XTTS v2
+
+The speech server uses **Coqui XTTS v2** as the default TTS engine (overridable via `TTS_MODEL_ID` env var).
+
+### Why XTTS v2?
+
+| Aspect | Piper VITS (espeak-ng) | Coqui XTTS v2 |
+|--------|------------------------|---------------|
+| Phonemization | espeak-ng → IPA → token IDs → VITS | **Character-based** — text directly |
+| Turkish chars | Needs proper espeak-ng data + voice file | **Native** — ğ,ş,ç,ö,ü,ı handled directly |
+| Uppercase | Spells letter-by-letter without lowercase | **Auto-normalizes** |
+| Markdown chars | Reads `*` as "yıldız" | **Auto-strips** internally |
+| Sample rate | 22050 Hz (Piper) | 24000 Hz |
+| Hecelenme risk | **HIGH** (3-layer pipeline: text→phoneme→token→audio) | **ZERO** (single-layer: text→audio) |
+
+### Pipeline flow:
+
+```
+Gemma 4 12B streaming response
+       │
+       ▼ clause splitter (. ! ?) — commas/newlines stay inside
+accumulated full_response_parts[]
+       │
+       ▼ " ".join() — single text string
+tts.synthesize(full_text)  ← ONE CALL, full context
+       │
+       ▼ XTTS v2 internally: lowercase → text split → encodec → hifi-gan
+24000 Hz float32 waveform
+       │
+       ▼ stream in 1024-sample chunks → client
+```
+
+### Supported TTS backends:
+
+| Backend | `TTS_MODEL_ID` / `TURKISH_TTS_BACKEND` | Sample rate | Requires |
+|---------|----------------------------------------|-------------|----------|
+| **Coqui XTTS v2** | `xtts` (default) | 24000 Hz | `TTS` package, Python < 3.12 |
+| Piper VITS | local path to model dir | 22050 Hz | `sherpa-onnx` |
+| Supertonic | `supertonic` | 44100 Hz | `supertonic` package |
+| MMS-TTS | HF model ID | 16000 Hz | `transformers` |
+| Dummy (sine) | `dummy` | 24000 Hz | None (dev/test) |
+
+---
+
 ## 📡 Communication Protocols
 
 ### CV Pipeline (Port 8000)
@@ -122,7 +166,7 @@ tests/
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/chat_stream` | POST | Audio in (float32 PCM), streamed audio out |
+| `/chat_stream` | POST | Audio in (float32 PCM), streamed audio out (header reports actual sample rate) |
 | `/reset` | POST | Clear conversation history |
 | `/last_turn` | GET | Retrieve last user/assistant text pair |
 | `/health` | GET | Liveness probe (no auth required) |
@@ -204,8 +248,11 @@ IDLE ──(face detected)──→ CALIBRATING ──(3s elapsed)──→ ACTI
 
 ## ⚡ Performance Considerations
 
+- **One-pass TTS synthesis**: Full LLM response synthesized at once — no clause-boundary artifacts, no inter-clause silence artifacts, no micro-fade events
+- **Byte-aligned client**: `iter_bytes` chunks reassembled at float32 (4-byte) boundaries — immune to TCP fragmentation misalignment
 - **Emotion inference at 1 Hz** in a background thread — does not block the 15fps main pipeline
 - **Health checks via HTTP** instead of spawning `nc` and `docker compose ps` subprocesses (was 120/min, now ~7/min via httpx + throttled Docker polling)
 - **MLX tempfile uses `delete=True`** — auto-cleanup by the OS, no manual `os.unlink` needed
 - **Face detection limited to `MAX_NUM_FACES` (default 3)** to bound MediaPipe processing time
 - **Pose detection limited to `MAX_NUM_POSES` (default 3)** similarly bounded
+- **Client reads `X-Sample-Rate` header** — playback stream created at the exact rate reported by the server (24000 Hz for XTTS, 22050 for Piper)

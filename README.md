@@ -1,203 +1,162 @@
 # İTÜ AI Tercih Danışmanı — Student Convince AI
 
-Welcome to the **İTÜ AI Preference Advisor**. This application is an interactive desktop assistant designed to help you prepare for advisor interviews. It combines real-time **Computer Vision** (tracking your camera feed for focus, eye contact, and posture) with a **Gemma 12B Voice Assistant** that hears you, understands who is speaking using speaker diarisation, and speaks back in Turkish.
+## What is this?
+
+A real-time desktop assistant that helps İTÜ students prepare for advisor interviews. Point a webcam and microphone at them, and the app:
+
+- 🎥 **Tracks their posture, eye contact, and facial expressions** using computer vision
+- 🎙️ **Listens to their speech** and transcribes it with Whisper
+- 🧠 **Responds naturally in Turkish** using Gemma 4 12B and a Turkish-native voice
+- 👥 **Identifies who is speaking** (even in multi-person rooms) via DiariZen speaker diarisation
+
+Built for İTÜ's Computer Engineering department. Runs on a Mac or Linux PC with a webcam and microphone.
 
 ---
 
-## 🏛️ Architecture
-
-```
-┌──────────────────────────────────────────────────────────┐
-│             PyQt6 Desktop Client (Mac/PC)                │
-│  Webcam → CV frames        Mic → Silero VAD → DiariZen  │
-│  client/desktop_client.py   client/workers.py            │
-│  client/metrics.py                                       │
-└───────────┬──────────────────────────┬───────────────────┘
-            │ JPEG frames (WebSocket)  │ Audio (HTTP POST)
-            ▼                          ▼
-┌──────────────────────────┐  ┌────────────────────────────┐
-│  CV Pipeline (FastAPI)   │  │  Speech Server (FastAPI)   │
-│  backend/cv_pipeline/    │  │  backend/speech_backend/   │
-│  Port 8000               │  │  Port 8002                 │
-│                          │  │  Whisper → Gemma 12B → TTS │
-└──────────────────────────┘  └────────────────────────────┘
-```
-
-### Key Components
-
-| Component | Directory | Description |
-|-----------|-----------|-------------|
-| CV Pipeline | `backend/cv_pipeline/` | MediaPipe Face/Pose, ONNX emotion, session state machine |
-| Speech Server | `backend/speech_backend/` | Whisper ASR → Gemma 12B → VITS TTS pipeline |
-| Desktop Client | `client/` | PyQt6 GUI, Silero VAD, DiariZen diarisation, WebRTC audio |
-| Tests | `tests/` | 137 pytest tests covering all modules |
-
-### Client Module Layout
-
-```
-client/
-├── desktop_client.py   — PyQt6 MainWindow + entry point (~430 lines)
-├── workers.py          — Background QThread workers (audio, CV, response gen)
-├── metrics.py          — CV metrics text formatting
-└── mock_client.py      — Test/demo camera feed generator
-```
-
----
-
-## 🔒 Security
-
-Both servers support **optional token-based authentication**:
-
-| Server | Env Variable | Mechanism |
-|--------|-------------|-----------|
-| Speech Server (8002) | `SPEECH_SERVER_TOKEN` | `Authorization: Bearer <token>` header |
-| CV Pipeline (8000) | `CV_PIPELINE_TOKEN` | `?token=<token>` query parameter on WebSocket |
-
-When the env variable is **not set**, auth is disabled (development mode). When set, all non-health endpoints require the matching token. The `/health` endpoints are always open for monitoring tools.
-
-For the desktop client:
-```bash
-# Via CLI flag:
-uv run python client/desktop_client.py --auth-token YOUR_TOKEN
-
-# Or via environment variable:
-export ITU_AUTH_TOKEN=YOUR_TOKEN
-```
-
----
-
-## 🛠️ Step-by-Step Launch Instructions
-
-Make sure **Docker Desktop** is open and running on your computer before starting.
-
-### Prerequisites
-
-- **Python 3.12** (recommended)
-- **Docker Desktop**
-- **uv** — fast Python package installer: `curl -LsSf https://astral.sh/uv | sh`
-
-### Step 1: Set Up Python Dependencies
+## Quick Start
 
 ```bash
-cd ITU_Student_Convince_AI
+# 1. Install dependencies (Python 3.12, uv required)
 ./scripts/setup_all.sh
-```
 
-*What this does:* Creates a `.venv` in the project root and installs all camera, media processing, PyQt6 GUI, and audio dependencies. Also installs the local `diarizen` and `pyannote-audio` packages.
-
----
-
-### Step 2: Start the Gemma 12B Speech Server
-
-Open a **new terminal window** and run:
-
-```bash
-cd ITU_Student_Convince_AI
-
-# Start the speech-to-speech server
+# 2. Start the speech server (terminal 1)
 ./scripts/start_cascaded_speech_server.sh
-```
 
-*What to expect:* You will see messages showing **Whisper Large v3 Turbo**, **Gemma 12B**, and the Turkish Voice Synthesizer are loading. Once finished, it will say `All models loaded and ready!` on port `8002`. Keep this terminal open.
-
-**For production:** Set `SPEECH_SERVER_TOKEN` to enable authentication:
-```bash
-export SPEECH_SERVER_TOKEN=$(openssl rand -hex 32)
-```
-
----
-
-### Step 3: Start the Desktop Application
-
-Open a **third terminal window**:
-
-```bash
-cd ITU_Student_Convince_AI
+# 3. Start the desktop app (terminal 2)
 uv run python client/desktop_client.py
 ```
 
-*What to expect:* A dark-themed application window opens:
-- **Left Panel**: Webcam feed, live CV scoring metrics, Docker service controls
-- **Right Panel**: Chat history with speaker-color-coded bubbles, voice controls
-- **Status Label**: Shows `Status: Idle` once the DiariZen model loads
+A dark-themed window opens. Click **"Start CV Pipeline"**, then start talking. The AI responds in Turkish with a natural voice.
 
-**For remote speech server:**
-```bash
-uv run python client/desktop_client.py --speech-server http://<H200-IP>:8002
+Speech server needs **Python 3.11** (XTTS v2 requirement). The start script automatically uses the correct Python environment. If you don't have it, see [Setup Guide](docs/SETUP.md).
+
+---
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────┐
+│          PyQt6 Desktop Client                │
+│  Webcam → CV frames    Mic → Silero VAD      │
+│  client/desktop_client.py                    │
+└──────────┬─────────────────────┬─────────────┘
+           │ WebSocket           │ HTTP POST
+           ▼                     ▼
+┌──────────────────┐  ┌────────────────────────┐
+│ CV Pipeline      │  │ Speech Server (:8002)   │
+│ (Docker :8000)   │  │                        │
+│ MediaPipe + ONNX │  │ Whisper → Gemma 4 12B  │
+│ emotion @ 1 Hz   │  │ → Coqui XTTS v2 (TTS)  │
+└──────────────────┘  └────────────────────────┘
 ```
 
----
+### Speech Pipeline Flow
 
-### Step 4: Turn on the Camera Scoring Pipeline (Docker)
+```
+User speaks → Silero VAD detects boundaries → Audio sent via HTTP POST
+→ Whisper transcribes (Turkish) → Gemma 4 12B generates response
+→ Full response synthesized in ONE PASS by XTTS v2 → Audio streamed back
+```
 
-Inside the left panel of the Desktop Application GUI, click the green **"Start CV Pipeline"** button.
-- *What this does:* Starts a Docker container running the CV pipeline (MediaPipe + ONNX) for posture, attention, and facial expression analysis.
-- *Verification:* The status indicator turns green and reads `CV_PIPELINE: RUNNING`.
+**Why one pass?** The full LLM response is accumulated, then sent to TTS as a single text. This gives the voice model complete sentence context — natural Turkish prosody, no unnatural pauses between fragments.
 
----
+### Why XTTS v2?
 
-## 🎙️ How to Talk with the AI
+The default TTS engine is **Coqui XTTS v2**, a character-based model that processes Turkish text directly. No intermediate phonemization step (unlike Piper VITS + espeak-ng, which maps text → phonetic symbols → token IDs → audio and can mispronounce individual characters).
 
-### Auto-Talk (VAD) Mode (Default)
-Simply start speaking into your microphone. The app detects speech boundaries automatically using Silero VAD, runs speaker diarisation, and sends audio to the Gemma server. The advisor's Turkish voice response plays through your speakers.
+| | Piper VITS + espeak-ng | XTTS v2 |
+|---|---|---|
+| Turkish characters (ğ,ş,ç,ö,ü,ı) | Needs correctly configured espeak data | **Native** |
+| Uppercase (İTÜ) | Spells letter-by-letter without preprocessing | **Auto-normalizes** |
+| Markdown (`*bold*`) | Reads `*` as "yıldız" | **Auto-strips** |
+| Syllable artifacts | Possible (3 conversion layers) | **None** (1 conversion layer) |
 
-### Speaker Diarisation Colors
-If multiple people speak in the room, each speaker gets a unique color:
-- **Speaker 0** → Blue
-- **Speaker 1** → Teal
-- **Speaker 2** → Purple
-
-### Manual Control
-Uncheck **Auto-Talk (VAD)** and use **Hold to Talk** to manually control recording.
-
-### Interrupting
-Click the orange **"Interrupt Playout"** button or speak over the assistant in Auto-Talk mode.
+To switch back to Piper or try other backends, set `TTS_MODEL_ID` before starting the server. See [Setup Guide](docs/SETUP.md) for details.
 
 ---
 
-## 🧪 Running Tests
+## Speaking to the AI
+
+**Default mode (hands-free):** Just start talking. The app detects when you start and stop speaking using Silero VAD. After you finish, the AI responds automatically.
+
+**Manual mode:** Uncheck "Auto-Talk (VAD)" and use the **Hold to Talk** button.
+
+**Interrupting the AI:** Click **"Interrupt Playout"** or just speak over it.
+
+**Multiple speakers:** Each person gets a color-coded bubble:
+- Speaker 0 → Blue
+- Speaker 1 → Teal
+- Speaker 2 → Purple
+
+---
+
+## Security
+
+Auth is **off by default** (development mode). To enable:
+
+```bash
+# Speech server
+export SPEECH_SERVER_TOKEN=$(openssl rand -hex 32)
+
+# Desktop client
+uv run python client/desktop_client.py --auth-token YOUR_TOKEN
+```
+
+When enabled, all non-health endpoints require the token (constant-time comparison via `secrets.compare_digest`). `/health` remains open for monitoring.
+
+---
+
+## Tests
 
 ```bash
 source .venv/bin/activate
-pytest tests/ -v
+pytest tests/ -v    # 137 tests, ~5 seconds
 ```
 
-**137 tests** covering:
-- Gaze computation (eye contact, gating, blink softening, head pose)
-- Posture calculations (lean, spine ratio, arms crossed)
-- Primary person selection (largest face, continuity hysteresis)
-- Session state machine (IDLE → CALIBRATING → ACTIVE → IDLE)
-- Scoring formulas (update_session, build_profile, build_focus)
-- Dynamic confidence computation
-- FrameSlot thread safety
-- Emotion worker lifecycle and error handling
-- Configuration defaults and env-var overrides
-- Multi-kiosk session isolation
-- Profile-once-per-person guarantee
+Tests cover gaze, posture, face selection, scoring, session state, emotion worker, thread safety, and config.
 
 ---
 
-## 📖 Further Reading
+## Project Structure
 
-- **[System Architecture](docs/ARCHITECTURE.md)** — Component design, communication flows, auth
-- **[Setup & Installation Guide](docs/SETUP.md)** — Detailed environment setup, Docker deployment, auth configuration
-- **[Sprint Document](docs/SPRINT.md)** — CV pipeline implementation sprint tasks and methodology
-- **[System Prompt](SYSTEM_PROMPT.md)** — The LLM prompt driving the İTÜ advisor persona
+```
+backend/
+├── cv_pipeline/          FastAPI CV server (MediaPipe, ONNX, session management)
+│   └── detectors/        Face, pose, gaze, posture, emotion, person selection
+├── speech_backend/       FastAPI speech server (Whisper, Gemma 4, XTTS)
+│   └── training/         LoRA fine-tuning for Gemma 4 on Turkish speech
+└── voice_agent/          DiariZen speaker diarisation
+
+client/
+├── desktop_client.py     PyQt6 MainWindow (~430 lines)
+├── workers.py            Background threads (audio, CV stream, response generation)
+└── metrics.py            Live CV metrics display formatting
+
+tests/                    137 pytest tests across all modules
+docs/                     Architecture, setup, sprint documentation
+scripts/                  Startup and setup scripts
+```
 
 ---
 
-## 🔑 Environment Variables Reference
+## Configuration
 
-| Variable | Default | Description |
+All configurable via environment variables. Key ones:
+
+| Variable | Default | What it does |
 |----------|---------|-------------|
-| `SPEECH_SERVER_TOKEN` | (empty) | Enables Bearer token auth on speech server |
-| `CV_PIPELINE_TOKEN` | (empty) | Enables query-param auth on CV WebSocket endpoints |
-| `ITU_AUTH_TOKEN` | (empty) | Auth token used by the desktop client |
-| `GEMMA_MODEL_ID` | `google/gemma-4-e4b-it` | Model ID for Gemma |
-| `GEMMA_QUANTIZATION` | `none` | Quantization: `none`, `int4`, `int8` |
-| `DEVICE` | `mps` (Mac) / `cuda` (Linux) | Compute device |
-| `SPEECH_SERVER_MODE` | (empty) | When set, default model becomes 12B (server deployment) |
-| `CALIBRATION_SECONDS` | `3.0` | CV calibration duration |
-| `NO_FACE_TIMEOUT_SECONDS` | `2.0` | Time before IDLE when no face detected |
-| `FOCUS_EMIT_INTERVAL_SECONDS` | `2.5` | Focus push interval |
-| `PROFILE_MIN_SAMPLES` | `30` | Samples needed before profile is generated |
+| `TTS_MODEL_ID` | `xtts` | TTS engine: `xtts`, Piper path, `supertonic`, `dummy` |
+| `SPEECH_SERVER_TOKEN` | (off) | Enables auth on speech server |
+| `GEMMA_MODEL_ID` | `google/gemma-4-e4b-it` | Which Gemma model to load |
+| `DEVICE` | auto | `mps` (Mac), `cuda`, or `cpu` |
+
+Full reference in [Setup Guide → Configuration](docs/SETUP.md#-configuration-reference).
+
+---
+
+## Docs
+
+- **[Setup & Installation](docs/SETUP.md)** — Python environments, Docker, auth, all config options, troubleshooting
+- **[Architecture](docs/ARCHITECTURE.md)** — Component details, TTS comparison, thread safety, scoring model
+- **[Sprint Doc](docs/SPRINT.md)** — CV pipeline implementation history and methodology
+- **[System Prompt](SYSTEM_PROMPT.md)** — The LLM prompt that defines the İTÜ advisor persona
