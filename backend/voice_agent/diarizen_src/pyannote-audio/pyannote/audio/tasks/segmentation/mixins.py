@@ -25,13 +25,21 @@ import math
 import random
 from typing import Dict, Sequence, Union
 
+from collections import namedtuple
+
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from pyannote.database.protocol.protocol import Scope, Subset
 from pytorch_lightning.loggers import MLFlowLogger, TensorBoardLogger
 from torch.utils.data._utils.collate import default_collate
-from torchaudio import AudioMetaData
+try:
+    from torchaudio import AudioMetaData
+except ImportError:
+    AudioMetaData = namedtuple(
+        "AudioMetaData",
+        ["sample_rate", "num_frames", "num_channels", "bits_per_sample", "encoding"],
+    )
 from torchmetrics import Metric
 from torchmetrics.classification import BinaryAUROC, MulticlassAUROC, MultilabelAUROC
 

@@ -7,9 +7,7 @@
 > See [`docs/ARCHITECTURE.md`](../../../docs/ARCHITECTURE.md) for the full system architecture.
 >
 > **Key differences from the original pipeline:**
-> - **STT**: Whisper Large v3 Turbo via HuggingFace `pipeline` (replaces faster-whisper/CT2)
-> - **LLM**: Gemma 4 12B unquantized bf16 on H200 (replaces Gemma 4 E2B-it)
-> - **TTS**: Piper VITS via Sherpa-ONNX or Coqui XTTS v2 (replaces Supertonic)
+> - **Speech-to-speech**: OpenAI Realtime `gpt-realtime-2.1` replaces local STT + LLM + TTS
 > - **Frontend**: PyQt6 desktop client (replaces Next.js browser app)
 > - **Audio transport**: Raw PCM float32 via HTTP POST (replaces Opus over WebSocket)
 > - **Auth**: Optional Bearer token on speech server, query param on CV WebSockets
@@ -33,9 +31,9 @@
 ┌──────────────────────────────────────┐
 │    Speech Server (FastAPI :8002)     │
 │                                      │
-│  Whisper Large v3 Turbo (ASR)        │
-│  Gemma 4 12B (LLM, unquantized)      │
-│  Piper VITS / XTTS v2 (TTS)         │
+│  OpenAI Realtime bridge              │
+│  gpt-realtime-2.1                    │
+│  PCM16 24kHz WebSocket to OpenAI     │
 │                                      │
 │  backend/speech_backend/server.py    │
 │  backend/speech_backend/config.py    │
@@ -44,11 +42,12 @@
 
 ## Running the İTÜ Speech Pipeline
 
-### Production (H200 GPU server)
+### Production / Local Realtime Server
 
 ```bash
 cd backend/speech_backend
 export SPEECH_SERVER_TOKEN=$(openssl rand -hex 32)
+export OPENAI_API_KEY=sk-...
 docker compose -f docker-compose.server.yml up -d --build
 ```
 

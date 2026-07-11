@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   speech-server:
     build:
@@ -8,19 +6,13 @@ services:
     ports:
       - "8002:8002"
     environment:
-      - DEVICE=cuda
-      - HOST=0.0.0.0
-      - PORT=8002
-      - MODEL_ID=google/gemma-4-12b-it
-      - QUANTIZATION=none
-      - CUDA_VISIBLE_DEVICES=1
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
-    volumes:
-      - /home/yigit/.cache/huggingface:/root/.cache/huggingface
+      - SPEECH_PROVIDER=openai_realtime
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_REALTIME_MODEL=${OPENAI_REALTIME_MODEL:-gpt-realtime-2.1}
+      - OPENAI_REALTIME_VOICE=${OPENAI_REALTIME_VOICE:-marin}
+      - OPENAI_REALTIME_TRANSCRIPTION_MODEL=${OPENAI_REALTIME_TRANSCRIPTION_MODEL:-gpt-realtime-whisper}
+      - OPENAI_REALTIME_LANGUAGE=${OPENAI_REALTIME_LANGUAGE:-tr}
+      - SPEECH_SERVER_TOKEN=${SPEECH_SERVER_TOKEN:-}
+      - SPEECH_SERVER_HOST=0.0.0.0
+      - SPEECH_SERVER_PORT=8002
     restart: unless-stopped

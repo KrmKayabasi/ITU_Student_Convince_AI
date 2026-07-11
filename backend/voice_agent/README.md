@@ -4,9 +4,8 @@
 > integrated into the İTÜ Student Convince AI project.
 >
 > The original Unmute browser-based voice chat system has been adapted to work with
-> our **PyQt6 desktop client**, **Gemma 4 12B** LLM (instead of Gemma 3 1B),
-> **Whisper Large v3 Turbo** ASR (instead of Kyutai STT), and **Piper VITS** /
-> **Sherpa-ONNX** Turkish TTS (instead of Kyutai TTS).
+> our **PyQt6 desktop client**, local **Silero VAD**, local **DiariZen** speaker
+> diarisation, and **OpenAI Realtime `gpt-realtime-2.1`** for speech-to-speech.
 >
 > For the full İTÜ project architecture, see:
 > - [`README.md`](../../README.md) — project overview
@@ -36,20 +35,20 @@ The Turkish STT/TTS adapters provided the foundation for our standalone speech b
 
 | Component | Original Unmute | İTÜ Version |
 |-----------|----------------|-------------|
-| STT | faster-whisper (CT2) | Whisper Large v3 Turbo (HuggingFace pipeline) |
-| LLM | Gemma 4 E2B-it (~2B) | Gemma 4 12B (unquantized bf16 on H200) |
-| TTS | Sherpa-ONNX Piper or Supertonic | Piper VITS via Sherpa-ONNX |
+| STT | faster-whisper (CT2) | OpenAI Realtime speech input |
+| LLM | Gemma 4 E2B-it (~2B) | OpenAI Realtime `gpt-realtime-2.1` |
+| TTS | Sherpa-ONNX Piper or Supertonic | OpenAI Realtime audio output |
 | Frontend | Next.js browser app | PyQt6 desktop client |
 | Client audio | Opus over WebSocket in browser | Raw PCM via HTTP POST from native client |
 | Diarisation | Not present | DiariZen local model |
 
 ### 3. What We DON'T Use
 
-- **Kyutai STT** — replaced by Whisper Large v3 Turbo in `speech_backend/`
-- **Kyutai TTS** — replaced by Piper VITS / XTTS in `speech_backend/`
+- **Kyutai STT** — replaced by OpenAI Realtime in `speech_backend/`
+- **Kyutai TTS** — replaced by OpenAI Realtime audio output in `speech_backend/`
 - **Browser frontend** (`frontend/`) — replaced by `client/desktop_client.py`
 - **Docker Compose / Dockerless / Docker Swarm** Unmute deployment — replaced by our own Docker setup
-- **OpenRouter / VLLM LLM serving** — replaced by our own Gemma server
+- **OpenRouter / VLLM LLM serving** — replaced by the OpenAI Realtime speech server
 
 ---
 
@@ -107,7 +106,7 @@ python backend/speech_backend/server.py
 ## Testing
 
 ```bash
-# Full project test suite (137 tests)
+# Full project test suite
 pytest tests/ -v
 
 # Voice agent specific tests
@@ -176,7 +175,7 @@ You can use any LLM you want.
 In production, we use GPT OSS 120B served over OpenRouter.
 In the default local setup (Docker Compose/Dockerless), Unmute uses [Gemma 3 1B](https://huggingface.co/google/gemma-3-1b-it) as the LLM.
 
-> **⚠️ İTÜ note:** We use **Gemma 4 12B** (not Gemma 3 1B) served via our own `backend/speech_backend/server.py`. The H200 deployment loads the model unquantized in bf16.
+> **⚠️ İTÜ note:** The active speech server now uses OpenAI Realtime `gpt-realtime-2.1`. The older Gemma path is kept only as legacy `SPEECH_PROVIDER=cascaded` code.
 
 This model is freely available but requires you to accept the conditions to access it:
 

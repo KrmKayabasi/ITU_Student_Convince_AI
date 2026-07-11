@@ -16,9 +16,12 @@ import tempfile
 import threading
 import json
 import time
+import importlib
+import importlib.util
+import sys
+from pathlib import Path
 
 import numpy as np
-import sounddevice as sd
 import scipy.io.wavfile as wav
 import httpx
 from collections import deque
@@ -28,6 +31,53 @@ from PyQt6.QtCore import QThread, pyqtSignal
 # ── Constants ─────────────────────────────────────────────────────────────────
 
 SAMPLE_RATE = 16000
+
+
+def _load_sounddevice():
+    try:
+        import sounddevice as sd
+    except OSError as e:
+        raise RuntimeError(
+            "PortAudio system library is missing. Install it first, e.g. "
+            "on Ubuntu/Debian: sudo apt install libportaudio2 portaudio19-dev"
+        ) from e
+    return sd
+
+
+def _ensure_sherpa_onnxruntime_link() -> None:
+    onnx_spec = importlib.util.find_spec("onnxruntime")
+    sherpa_spec = importlib.util.find_spec("sherpa_onnx")
+    if onnx_spec is None or sherpa_spec is None or onnx_spec.origin is None or sherpa_spec.origin is None:
+        return
+
+    onnx_capi_dir = Path(onnx_spec.origin).parent / "capi"
+    candidates = sorted(onnx_capi_dir.glob("libonnxruntime.so*"))
+    if not candidates:
+        return
+
+    site_packages = Path(sherpa_spec.origin).parent.parent
+    sherpa_libs = site_packages / "sherpa_onnx.libs"
+    link_path = sherpa_libs / "libonnxruntime.so"
+    if link_path.exists():
+        return
+
+    sherpa_libs.mkdir(exist_ok=True)
+    target = candidates[0]
+    try:
+        link_path.symlink_to(os.path.relpath(target, sherpa_libs))
+    except OSError:
+        pass
+
+
+def _load_sherpa_onnx():
+    try:
+        return importlib.import_module("sherpa_onnx")
+    except ImportError as e:
+        if "libonnxruntime.so" not in str(e):
+            raise
+        sys.modules.pop("sherpa_onnx", None)
+        _ensure_sherpa_onnxruntime_link()
+        return importlib.import_module("sherpa_onnx")
 
 
 # ── Pipeline Loader ───────────────────────────────────────────────────────────
@@ -77,6 +127,7 @@ class AudioCaptureWorker(QThread):
 
     def __init__(self, sample_rate=SAMPLE_RATE):
         super().__init__()
+        self.sd = _load_sounddevice()
         self.sample_rate = sample_rate
         self._lock = threading.Lock()
         self._is_recording = False
@@ -85,7 +136,7 @@ class AudioCaptureWorker(QThread):
         self._buffer: list = []
 
         # Load Silero VAD for voice activity boundary detection
-        import sherpa_onnx
+        sherpa_onnx = _load_sherpa_onnx()
         vad_model_path = os.path.abspath(os.path.join(
             os.path.dirname(__file__), "..", "backend", "speech_backend", "silero_vad.onnx"
         ))
@@ -154,6 +205,7 @@ class AudioCaptureWorker(QThread):
         self.is_active = False
 
     def run(self):
+        sd = self.sd
         pre_roll = deque(maxlen=20)  # 400ms pre-speech frames
         self.vad.reset()
 
@@ -315,6 +367,7 @@ class ResponseGeneratorWorker(QThread):
         # don't send the header.
         play_stream = None
         try:
+            sd = _load_sounddevice()
             # Stream playout chunk-by-chunk from speech server POST request
             headers = self._make_headers()
             with httpx.Client(timeout=60.0) as client:

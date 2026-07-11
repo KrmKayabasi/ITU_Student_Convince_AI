@@ -1,3 +1,54 @@
+[project]
+name = "itu-student-convince-ai"
+version = "0.1.0"
+description = "Desktop CV and voice assistant for ITU student advising demos"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "accelerate>=0.25.0",
+    "diarizen",
+    "einops>=0.7.0",
+    "fastapi>=0.115.0",
+    "h5py>=3.10.0",
+    "httpx>=0.27.0",
+    "huggingface-hub>=0.23.0",
+    "joblib>=1.3.2",
+    "librosa>=0.10.1",
+    "mediapipe>=0.10.18",
+    "numpy==1.26.4",
+    "onnxruntime>=1.19.2",
+    "opencv-python>=4.10.0,<5.0.0",
+    "pandas>=2.0.0",
+    "pyannote-audio",
+    "pyqt6>=6.7.0,<7.0.0",
+    "pyqt6-webengine>=6.7.0,<7.0.0",
+    "pyyaml>=6.0.0",
+    "scipy>=1.10.0",
+    "sherpa-onnx>=1.10.0",
+    "sounddevice>=0.4.6",
+    "soundfile>=0.12.1",
+    "thop>=0.1.1",
+    "toml>=0.10.2",
+    "torch>=2.1.0",
+    "torchaudio>=2.1.0",
+    "torchinfo>=1.8.0",
+    "tqdm>=4.66.0",
+    "uvicorn[standard]>=0.30.0",
+    "websockets>=13.1,<17.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.5",
+    "pytest-asyncio>=0.26.0",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+diarizen = { path = "backend/voice_agent/diarizen_src", editable = true }
+pyannote-audio = { path = "backend/voice_agent/diarizen_src/pyannote-audio", editable = true }
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]

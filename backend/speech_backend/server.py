@@ -1,4 +1,4 @@
-# Integrated Speech-to-Speech Server (NVIDIA H200 Multi-GPU)
+# Integrated Speech-to-Speech Server
 
 import os
 
@@ -32,14 +32,48 @@ from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import numpy as np
 import time
-import torch
-from transformers import pipeline
 
-from config import SERVER_HOST as HOST, SERVER_PORT as PORT, MODEL_ID, QUANTIZATION, DEVICE, ENABLE_THINKING, TTS_MODEL_ID, SYSTEM_INSTRUCTION
-from model_handler import GemmaAudioProcessor
-from tts_handler import OfflineTTSHandler
+try:
+    from .config import (
+        SERVER_HOST as HOST,
+        SERVER_PORT as PORT,
+        MODEL_ID,
+        QUANTIZATION,
+        DEVICE,
+        ENABLE_THINKING,
+        TTS_MODEL_ID,
+        SYSTEM_INSTRUCTION,
+        SPEECH_PROVIDER,
+        OPENAI_API_KEY,
+        OPENAI_REALTIME_MODEL,
+        OPENAI_REALTIME_VOICE,
+        OPENAI_REALTIME_TRANSCRIPTION_MODEL,
+        OPENAI_REALTIME_LANGUAGE,
+    )
+except ImportError:
+    from config import (
+        SERVER_HOST as HOST,
+        SERVER_PORT as PORT,
+        MODEL_ID,
+        QUANTIZATION,
+        DEVICE,
+        ENABLE_THINKING,
+        TTS_MODEL_ID,
+        SYSTEM_INSTRUCTION,
+        SPEECH_PROVIDER,
+        OPENAI_API_KEY,
+        OPENAI_REALTIME_MODEL,
+        OPENAI_REALTIME_VOICE,
+        OPENAI_REALTIME_TRANSCRIPTION_MODEL,
+        OPENAI_REALTIME_LANGUAGE,
+    )
 
-app = FastAPI(title="Turkish Speech-to-Speech Server (NVIDIA H200)")
+try:
+    from .openai_realtime_bridge import OpenAIRealtimeBridge
+except ImportError:
+    from openai_realtime_bridge import OpenAIRealtimeBridge
+
+app = FastAPI(title="Turkish Speech-to-Speech Server")
 
 # ── Auth ─────────────────────────────────────────────────────────────────────
 # Token-based authentication.  Set SPEECH_SERVER_TOKEN in the environment to
@@ -64,13 +98,45 @@ def _verify_auth(credentials: HTTPAuthorizationCredentials | None = Depends(_sec
 gemma = None
 tts = None
 asr = None
+realtime = None
 
 @app.on_event("startup")
 def startup_event():
-    global gemma, tts, asr
+    global gemma, tts, asr, realtime
     print("=" * 60)
-    print("STARTING H200 SPEECH-TO-SPEECH SERVER")
+    print("STARTING SPEECH-TO-SPEECH SERVER")
+    print(f"Provider: {SPEECH_PROVIDER}")
     print("=" * 60)
+
+    if SPEECH_PROVIDER == "openai_realtime":
+        realtime = OpenAIRealtimeBridge(
+            api_key=OPENAI_API_KEY,
+            model=OPENAI_REALTIME_MODEL,
+            voice=OPENAI_REALTIME_VOICE,
+            instructions=SYSTEM_INSTRUCTION,
+            transcription_model=OPENAI_REALTIME_TRANSCRIPTION_MODEL,
+            language=OPENAI_REALTIME_LANGUAGE,
+        )
+        print(
+            f"[Server] OpenAI Realtime bridge ready "
+            f"(model={OPENAI_REALTIME_MODEL}, voice={OPENAI_REALTIME_VOICE})",
+            flush=True,
+        )
+        return
+
+    if SPEECH_PROVIDER != "cascaded":
+        raise RuntimeError(
+            "Unsupported SPEECH_PROVIDER. Use 'openai_realtime' or 'cascaded'."
+        )
+
+    import torch
+    from transformers import pipeline
+    try:
+        from .model_handler import GemmaAudioProcessor
+        from .tts_handler import OfflineTTSHandler
+    except ImportError:
+        from model_handler import GemmaAudioProcessor
+        from tts_handler import OfflineTTSHandler
     
     # Load Gemma 4 on CUDA (unquantized for best quality)
     gemma = GemmaAudioProcessor(
@@ -107,15 +173,26 @@ chat_history = []
 MAX_HISTORY_TURNS = 20
 
 @app.post("/reset")
-def reset_conversation(_auth=Depends(_verify_auth)):
-    global chat_history
+async def reset_conversation(_auth=Depends(_verify_auth)):
+    global chat_history, realtime
+    if SPEECH_PROVIDER == "openai_realtime":
+        if realtime is not None:
+            await realtime.reset()
+        print("[Server] OpenAI Realtime conversation reset!", flush=True)
+        return {"status": "reset"}
+
     chat_history = []
     print("[Server] Conversation history reset!", flush=True)
     return {"status": "reset"}
 
 @app.get("/last_turn")
 def get_last_turn(_auth=Depends(_verify_auth)):
-    global chat_history
+    global chat_history, realtime
+    if SPEECH_PROVIDER == "openai_realtime":
+        if realtime is None:
+            return {"user": "", "assistant": ""}
+        return realtime.get_last_turn()
+
     if len(chat_history) >= 2:
         return {
             "user": chat_history[-2]["content"],
@@ -131,7 +208,7 @@ async def chat_stream(request: Request, _auth=Depends(_verify_auth)):
     runs Gemma 4 (LLM) with conversation history,
     synthesizes audio (24kHz) using Piper VITS, and streams the raw float32 audio bytes back.
     """
-    global chat_history, asr
+    global chat_history, asr, realtime
 
     # 1. Read binary audio data
     audio_bytes = await request.body()
@@ -141,6 +218,44 @@ async def chat_stream(request: Request, _auth=Depends(_verify_auth)):
     # Convert bytes back to float32 numpy array
     audio_data = np.frombuffer(audio_bytes, dtype=np.float32)
     print(f"\n[Server] Received user speech: {len(audio_data)} samples ({len(audio_data)/16000:.2f}s)")
+
+    if SPEECH_PROVIDER == "openai_realtime":
+        if realtime is None:
+            raise HTTPException(status_code=503, detail="OpenAI Realtime provider is not initialized")
+
+        rms = float(np.sqrt(np.mean(audio_data**2))) if len(audio_data) > 0 else 0.0
+        if rms < 0.005:
+            print(f"[Server] Silence detected (RMS={rms:.5f}). Bypassing OpenAI Realtime.", flush=True)
+            return StreamingResponse(
+                iter([b""]),
+                media_type="application/octet-stream",
+                headers={"X-Sample-Rate": str(realtime.sample_rate)},
+            )
+
+        try:
+            await realtime.ensure_ready()
+        except Exception as e:
+            print(f"[Server Error] OpenAI Realtime connection failed: {e}", flush=True)
+            raise HTTPException(status_code=502, detail="OpenAI Realtime connection failed") from e
+
+        async def realtime_audio_generator():
+            try:
+                async for chunk in realtime.stream_turn(audio_data):
+                    yield chunk
+            except Exception as e:
+                print(f"[Server Error] OpenAI Realtime streaming failed: {e}", flush=True)
+                import traceback
+                traceback.print_exc()
+
+        return StreamingResponse(
+            realtime_audio_generator(),
+            media_type="application/octet-stream",
+            headers={
+                "X-Sample-Rate": str(realtime.sample_rate),
+                "X-Streaming": "true",
+                "X-Speech-Provider": "openai_realtime",
+            },
+        )
     
     # 2. Run Whisper STT with energy check to prevent silence hallucinations
     rms = np.sqrt(np.mean(audio_data**2)) if len(audio_data) > 0 else 0
@@ -260,7 +375,8 @@ async def health():
     return {
         "status": "ok",
         "auth_enabled": _AUTH_ENABLED,
-        "model": MODEL_ID,
+        "provider": SPEECH_PROVIDER,
+        "model": OPENAI_REALTIME_MODEL if SPEECH_PROVIDER == "openai_realtime" else MODEL_ID,
     }
 
 

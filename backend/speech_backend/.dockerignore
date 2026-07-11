@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Legacy local-model assets are not needed by the OpenAI Realtime server image.
+*.onnx
+*.wav
+vits-piper-*/
+training/
+test_*.py

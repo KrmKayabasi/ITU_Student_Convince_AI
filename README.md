@@ -5,8 +5,8 @@
 A real-time desktop assistant that helps İTÜ students prepare for advisor interviews. Point a webcam and microphone at them, and the app:
 
 - 🎥 **Tracks their posture, eye contact, and facial expressions** using computer vision
-- 🎙️ **Listens to their speech** and transcribes it with Whisper
-- 🧠 **Responds naturally in Turkish** using Gemma 4 12B and a Turkish-native voice
+- 🎙️ **Listens to their speech** with local Silero VAD boundaries
+- 🧠 **Responds naturally in Turkish** using OpenAI Realtime `gpt-realtime-2.1`
 - 👥 **Identifies who is speaking** (even in multi-person rooms) via DiariZen speaker diarisation
 
 Built for İTÜ's Computer Engineering department. Runs on a Mac or Linux PC with a webcam and microphone.
@@ -17,10 +17,13 @@ Built for İTÜ's Computer Engineering department. Runs on a Mac or Linux PC wit
 
 ```bash
 # 1. Install dependencies (Python 3.12, uv required)
-./scripts/setup_all.sh
+sudo apt install libportaudio2 portaudio19-dev
+uv sync --python 3.12
 
 # 2. Start the speech server (terminal 1)
-./scripts/start_cascaded_speech_server.sh
+export OPENAI_API_KEY=sk-...
+podman build -f backend/speech_backend/Dockerfile.server -t itu-speech-realtime backend/speech_backend
+podman run --rm -p 8002:8002 -e OPENAI_API_KEY --name itu-speech-server itu-speech-realtime
 
 # 3. Start the desktop app (terminal 2)
 uv run python client/desktop_client.py
@@ -28,7 +31,7 @@ uv run python client/desktop_client.py
 
 A dark-themed window opens. Click **"Start CV Pipeline"**, then start talking. The AI responds in Turkish with a natural voice.
 
-Speech server needs **Python 3.11** (XTTS v2 requirement). The start script automatically uses the correct Python environment. If you don't have it, see [Setup Guide](docs/SETUP.md).
+The speech server is lightweight in the default OpenAI Realtime mode and does not need local CUDA, Whisper, Gemma, or TTS models. If you do not use Podman, see [Setup Guide](docs/SETUP.md) for the local Python command.
 
 ---
 
@@ -45,8 +48,8 @@ Speech server needs **Python 3.11** (XTTS v2 requirement). The start script auto
 ┌──────────────────┐  ┌────────────────────────┐
 │ CV Pipeline      │  │ Speech Server (:8002)   │
 │ (Docker :8000)   │  │                        │
-│ MediaPipe + ONNX │  │ Whisper → Gemma 4 12B  │
-│ emotion @ 1 Hz   │  │ → Coqui XTTS v2 (TTS)  │
+│ MediaPipe + ONNX │  │ OpenAI Realtime bridge │
+│ emotion @ 1 Hz   │  │ gpt-realtime-2.1       │
 └──────────────────┘  └────────────────────────┘
 ```
 
@@ -54,24 +57,17 @@ Speech server needs **Python 3.11** (XTTS v2 requirement). The start script auto
 
 ```
 User speaks → Silero VAD detects boundaries → Audio sent via HTTP POST
-→ Whisper transcribes (Turkish) → Gemma 4 12B generates response
-→ Full response synthesized in ONE PASS by XTTS v2 → Audio streamed back
+→ OpenAI Realtime (gpt-realtime-2.1) handles speech understanding, reasoning, and voice
+→ PCM audio deltas stream back to the desktop client
 ```
 
-**Why one pass?** The full LLM response is accumulated, then sent to TTS as a single text. This gives the voice model complete sentence context — natural Turkish prosody, no unnatural pauses between fragments.
+The desktop-side Silero VAD and DiariZen diarisation remain local. Only the old server-side Whisper → Gemma → TTS cascade is replaced.
 
-### Why XTTS v2?
+### Why OpenAI Realtime?
 
-The default TTS engine is **Coqui XTTS v2**, a character-based model that processes Turkish text directly. No intermediate phonemization step (unlike Piper VITS + espeak-ng, which maps text → phonetic symbols → token IDs → audio and can mispronounce individual characters).
+`gpt-realtime-2.1` removes the separate STT, LLM, and TTS hops. That reduces turn latency, simplifies local deployment, and avoids running large speech/LLM models on the speech server.
 
-| | Piper VITS + espeak-ng | XTTS v2 |
-|---|---|---|
-| Turkish characters (ğ,ş,ç,ö,ü,ı) | Needs correctly configured espeak data | **Native** |
-| Uppercase (İTÜ) | Spells letter-by-letter without preprocessing | **Auto-normalizes** |
-| Markdown (`*bold*`) | Reads `*` as "yıldız" | **Auto-strips** |
-| Syllable artifacts | Possible (3 conversion layers) | **None** (1 conversion layer) |
-
-To switch back to Piper or try other backends, set `TTS_MODEL_ID` before starting the server. See [Setup Guide](docs/SETUP.md) for details.
+The server keeps the same `/chat_stream`, `/last_turn`, `/reset`, and `/health` endpoints, so the PyQt client does not need a protocol rewrite.
 
 ---
 
@@ -97,6 +93,7 @@ Auth is **off by default** (development mode). To enable:
 ```bash
 # Speech server
 export SPEECH_SERVER_TOKEN=$(openssl rand -hex 32)
+export OPENAI_API_KEY=sk-...
 
 # Desktop client
 uv run python client/desktop_client.py --auth-token YOUR_TOKEN
@@ -110,10 +107,10 @@ When enabled, all non-health endpoints require the token (constant-time comparis
 
 ```bash
 source .venv/bin/activate
-pytest tests/ -v    # 137 tests, ~5 seconds
+pytest tests/ -v
 ```
 
-Tests cover gaze, posture, face selection, scoring, session state, emotion worker, thread safety, and config.
+Tests cover gaze, posture, face selection, scoring, session state, emotion worker, thread safety, config, and the Realtime bridge audio conversion layer.
 
 ---
 
@@ -123,8 +120,8 @@ Tests cover gaze, posture, face selection, scoring, session state, emotion worke
 backend/
 ├── cv_pipeline/          FastAPI CV server (MediaPipe, ONNX, session management)
 │   └── detectors/        Face, pose, gaze, posture, emotion, person selection
-├── speech_backend/       FastAPI speech server (Whisper, Gemma 4, XTTS)
-│   └── training/         LoRA fine-tuning for Gemma 4 on Turkish speech
+├── speech_backend/       FastAPI speech server (OpenAI Realtime by default)
+│   └── training/         Legacy LoRA fine-tuning experiments for Gemma speech
 └── voice_agent/          DiariZen speaker diarisation
 
 client/
@@ -132,7 +129,7 @@ client/
 ├── workers.py            Background threads (audio, CV stream, response generation)
 └── metrics.py            Live CV metrics display formatting
 
-tests/                    137 pytest tests across all modules
+tests/                    pytest tests across all modules
 docs/                     Architecture, setup, sprint documentation
 scripts/                  Startup and setup scripts
 ```
@@ -145,10 +142,13 @@ All configurable via environment variables. Key ones:
 
 | Variable | Default | What it does |
 |----------|---------|-------------|
-| `TTS_MODEL_ID` | `xtts` | TTS engine: `xtts`, Piper path, `supertonic`, `dummy` |
+| `SPEECH_PROVIDER` | `openai_realtime` | Speech backend: OpenAI Realtime by default; `cascaded` keeps the old local path |
+| `OPENAI_API_KEY` | required | API key for `gpt-realtime-2.1` |
+| `OPENAI_REALTIME_MODEL` | `gpt-realtime-2.1` | Realtime speech model |
+| `OPENAI_REALTIME_VOICE` | `marin` | Realtime output voice |
 | `SPEECH_SERVER_TOKEN` | (off) | Enables auth on speech server |
-| `GEMMA_MODEL_ID` | `google/gemma-4-e4b-it` | Which Gemma model to load |
-| `DEVICE` | auto | `mps` (Mac), `cuda`, or `cpu` |
+| `GEMMA_MODEL_ID` | `google/gemma-4-e4b-it` | Used only when `SPEECH_PROVIDER=cascaded` |
+| `DEVICE` | auto | Used only when `SPEECH_PROVIDER=cascaded` |
 
 Full reference in [Setup Guide → Configuration](docs/SETUP.md#-configuration-reference).
 
@@ -157,6 +157,6 @@ Full reference in [Setup Guide → Configuration](docs/SETUP.md#-configuration-r
 ## Docs
 
 - **[Setup & Installation](docs/SETUP.md)** — Python environments, Docker, auth, all config options, troubleshooting
-- **[Architecture](docs/ARCHITECTURE.md)** — Component details, TTS comparison, thread safety, scoring model
+- **[Architecture](docs/ARCHITECTURE.md)** — Component details, Realtime bridge, thread safety, scoring model
 - **[Sprint Doc](docs/SPRINT.md)** — CV pipeline implementation history and methodology
 - **[System Prompt](SYSTEM_PROMPT.md)** — The LLM prompt that defines the İTÜ advisor persona

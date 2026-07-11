@@ -1,9 +1,5 @@
 fastapi
-uvicorn
+uvicorn[standard]
 numpy
 scipy
-soundfile
-librosa
-transformers
-accelerate
-TTS
+websockets>=13.1

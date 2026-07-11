@@ -7,9 +7,12 @@ Follow these instructions to set up your virtual environments, install dependenc
 ## 🛠️ Prerequisites
 
 - **Python 3.12** — for CV pipeline and desktop client (project `.venv`, managed by `uv`)
-- **Python 3.11** — for the speech server (XTTS v2 requires Python < 3.12). Uses the venv at `Turkish_Speech_to_Speech/venv/`
-- **Docker Desktop**: Required to run the CV scoring pipeline container
+- **Python 3.11+** — for the lightweight OpenAI Realtime speech server if running without a container
+- **Docker or Podman**: Required to run the containerized services
 - **uv**: The fast Python package installer (`curl -LsSf https://astral.sh/uv | sh`)
+- **OpenAI API key** with access to `gpt-realtime-2.1`
+- **Linux audio library** for microphone I/O:
+  `sudo apt install libportaudio2 portaudio19-dev`
 
 ---
 
@@ -24,7 +27,10 @@ We use a single unified virtual environment (`.venv`, Python 3.12) at the root o
 git clone <repo-url>
 cd ITU_Student_Convince_AI
 
-# Run the unified setup script
+# Sync the unified environment with Python 3.12
+uv sync --python 3.12
+
+# Or run the setup helper, which does the same sync and fixes script permissions
 ./scripts/setup_all.sh
 ```
 
@@ -38,33 +44,46 @@ Follow this sequence to launch the entire system:
 
 ### Step 1: Deploy the Speech Server
 
-The speech server uses the **Python 3.11** venv from the Turkish_Speech_to_Speech reference repo, which has Coqui XTTS v2 installed (XTTS requires Python < 3.12).
+The default speech server uses **OpenAI Realtime** (`gpt-realtime-2.1`) and keeps the same local desktop VAD/diarisation flow. It does not need local Whisper, Gemma, XTTS, CUDA, or a Hugging Face cache.
 
-**Start the server:**
+**Start with plain Podman:**
 
 ```bash
 cd ITU_Student_Convince_AI
+export OPENAI_API_KEY=sk-...
+export SPEECH_SERVER_TOKEN=$(openssl rand -hex 32)  # optional but recommended
 
-# Start with XTTS v2 (default) — Python 3.11 venv
-./scripts/start_cascaded_speech_server.sh
+podman build -f backend/speech_backend/Dockerfile.server -t itu-speech-realtime backend/speech_backend
+podman run --rm -p 8002:8002 \
+    -e OPENAI_API_KEY \
+    -e SPEECH_SERVER_TOKEN \
+    --name itu-speech-server \
+    itu-speech-realtime
 ```
 
-The server listens at `http://localhost:8002`. You'll see messages for Whisper, Gemma 4, and XTTS v2 loading.
+**Start with Podman Compose if you have a compose provider:**
 
-**Alternative TTS backends (set before starting):**
 ```bash
-# Piper VITS (espeak-based, 22050 Hz):
-export TTS_MODEL_ID="vits-piper-tr_TR-fahrettin-medium"
-./scripts/start_cascaded_speech_server.sh
+cd ITU_Student_Convince_AI
+export OPENAI_API_KEY=sk-...
+export SPEECH_SERVER_TOKEN=$(openssl rand -hex 32)  # optional but recommended
 
-# Supertonic (Turkish-native, 44100 Hz):
-export TURKISH_TTS_BACKEND="supertonic"
-./scripts/start_cascaded_speech_server.sh
-
-# Dummy (sine wave, for testing audio pipeline):
-export TURKISH_TTS_BACKEND="dummy"
-./scripts/start_cascaded_speech_server.sh
+podman compose -f backend/speech_backend/docker-compose.server.yml up --build
 ```
+
+If your Podman install uses the Docker-compatible plugin, `docker compose -f backend/speech_backend/docker-compose.server.yml up --build` also works.
+
+**Start without a container:**
+
+```bash
+cd ITU_Student_Convince_AI
+source .venv/bin/activate
+pip install -r backend/speech_backend/requirements_server.txt
+export OPENAI_API_KEY=sk-...
+./scripts/start_openai_realtime_speech_server.sh
+```
+
+The server listens at `http://localhost:8002`. `/health` reports `provider=openai_realtime` and `model=gpt-realtime-2.1`.
 
 ### Step 2: Start the CV Ingestion Backend
 
@@ -84,6 +103,9 @@ Alternatively, you can click the **"Start CV Pipeline"** button inside the Deskt
 ```bash
 # Local speech server:
 uv run python client/desktop_client.py
+
+# Local speech server with SPEECH_SERVER_TOKEN enabled:
+uv run python client/desktop_client.py --auth-token "$SPEECH_SERVER_TOKEN"
 
 # Remote speech server with auth:
 uv run python client/desktop_client.py \
@@ -121,9 +143,10 @@ Authentication is **off by default** for development convenience. To enable it:
 ```bash
 # Generate a random token
 export SPEECH_SERVER_TOKEN=$(openssl rand -hex 32)
+export OPENAI_API_KEY=sk-...
 
 # Start the server (it reads SPEECH_SERVER_TOKEN from env)
-./scripts/start_cascaded_speech_server.sh
+./scripts/start_openai_realtime_speech_server.sh
 ```
 
 ### CV Pipeline
@@ -153,42 +176,26 @@ python backend/speech_backend/client.py
 
 ---
 
-## 🔧 TTS Configuration
+## 🔧 Speech Provider Configuration
 
-### Coqui XTTS v2 (default)
+### OpenAI Realtime (default)
 
 ```bash
-# No extra config needed — this is the default
-# Uses fahrettin speaker voice (xtts_test.wav in speech_backend/)
-# Sample rate: 24000 Hz
-./scripts/start_cascaded_speech_server.sh
+export SPEECH_PROVIDER=openai_realtime
+export OPENAI_API_KEY=sk-...
+export OPENAI_REALTIME_MODEL=gpt-realtime-2.1
+export OPENAI_REALTIME_VOICE=marin
+./scripts/start_openai_realtime_speech_server.sh
 ```
 
-### Piper VITS (sherpa-onnx)
+The server sends manually committed audio turns to Realtime, so local Silero VAD remains the authority for speech boundaries.
 
-Requires the model directory to be present:
+### Legacy Cascaded Mode
 
-```bash
-# Make sure the model is downloaded:
-ls backend/speech_backend/vits-piper-tr_TR-fahrettin-medium/
-
-# Switch to Piper:
-export TTS_MODEL_ID="vits-piper-tr_TR-fahrettin-medium"
-./scripts/start_cascaded_speech_server.sh
-```
-
-Piper-specific tuning (optional):
-```bash
-export SHERPA_TTS_SPEED="1.0"
-export SHERPA_TTS_SILENCE_SCALE="0.2"
-```
-
-### Supertonic
+The old Whisper → Gemma → TTS path is still available for experiments, but it requires the old local model dependencies and GPU setup.
 
 ```bash
-export TURKISH_TTS_BACKEND="supertonic"
-export SUPERTONIC_VOICE="M1"
-export SUPERTONIC_SPEED="1.1"
+export SPEECH_PROVIDER=cascaded
 ./scripts/start_cascaded_speech_server.sh
 ```
 
@@ -200,20 +207,24 @@ export SUPERTONIC_SPEED="1.1"
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `TTS_MODEL_ID` | `xtts` | TTS backend: `xtts` (default), Piper path, `supertonic`, `dummy` |
-| `TURKISH_TTS_BACKEND` | (empty) | Alt: `supertonic`, `dummy` |
-| `GEMMA_MODEL_ID` | `google/gemma-4-e4b-it` | Model ID (server mode: `google/gemma-4-12B-it`) |
-| `GEMMA_QUANTIZATION` | `none` | Quantization level: `none`, `int4`, `int8` |
-| `DEVICE` | auto | `mps` (Mac), `cuda` (Linux), or `cpu` |
-| `SPEECH_SERVER_MODE` | (empty) | When set, defaults to 12B model |
-| `ENABLE_THINKING` | `0` | Set to `1` for chain-of-thought |
+| `SPEECH_PROVIDER` | `openai_realtime` | `openai_realtime` or legacy `cascaded` |
+| `OPENAI_API_KEY` | required | API key for OpenAI Realtime |
+| `OPENAI_REALTIME_MODEL` | `gpt-realtime-2.1` | Realtime model |
+| `OPENAI_REALTIME_VOICE` | `marin` | Realtime voice |
+| `OPENAI_REALTIME_TRANSCRIPTION_MODEL` | `gpt-realtime-whisper` | Input transcript model for `/last_turn` |
+| `OPENAI_REALTIME_LANGUAGE` | `tr` | Input transcription language |
+| `TTS_MODEL_ID` | `xtts` | Legacy cascaded TTS backend only |
+| `TURKISH_TTS_BACKEND` | (empty) | Legacy cascaded TTS alt backend only |
+| `GEMMA_MODEL_ID` | `google/gemma-4-e4b-it` | Legacy cascaded model ID |
+| `GEMMA_QUANTIZATION` | `none` | Legacy cascaded quantization level |
+| `DEVICE` | auto | Legacy cascaded device: `mps`, `cuda`, or `cpu` |
 | `PLAYBACK_INTERRUPTION_MODE` | `both` | `both`, `key_only`, `vad_only`, `none` |
 | `SERVER_HOST` | `0.0.0.0` | Bind address |
 | `SERVER_PORT` | `8002` | Listen port |
-| `SUPERTONIC_VOICE` | `M1` | Supertonic voice name |
-| `SUPERTONIC_SPEED` | `1.1` | Supertonic speed factor |
-| `SHERPA_TTS_SPEED` | `1.0` | Piper VITS speed factor |
-| `SHERPA_TTS_SILENCE_SCALE` | `0.2` | Piper silence scale |
+| `SUPERTONIC_VOICE` | `M1` | Legacy cascaded Supertonic voice name |
+| `SUPERTONIC_SPEED` | `1.1` | Legacy cascaded Supertonic speed factor |
+| `SHERPA_TTS_SPEED` | `1.0` | Legacy cascaded Piper VITS speed factor |
+| `SHERPA_TTS_SILENCE_SCALE` | `0.2` | Legacy cascaded Piper silence scale |
 
 ### CV Pipeline (`backend/cv_pipeline/config.py`)
 
@@ -241,7 +252,7 @@ source .venv/bin/activate
 pytest tests/ -v
 ```
 
-137 tests covering gaze, posture, scoring, session state, processing, emotion, config, and CV pipeline integration. See `docs/ARCHITECTURE.md` for the full test breakdown.
+Tests cover gaze, posture, scoring, session state, processing, emotion, config, CV pipeline integration, and the Realtime bridge audio conversion layer. See `docs/ARCHITECTURE.md` for the full breakdown.
 
 ---
 
@@ -254,7 +265,6 @@ pytest tests/ -v
 | `Connection refused` to speech server | Verify server is running: `curl http://localhost:8002/health` |
 | Docker container won't start | Run `docker compose ps` to check status; check logs with `docker compose logs cv-pipeline` |
 | Auth errors (401) | Set `SPEECH_SERVER_TOKEN` or `ITU_AUTH_TOKEN` matching the server, or unset both for dev mode |
-| XTTS fails with "No module named 'transformers'" | Must use Python 3.11 venv: `./scripts/start_cascaded_speech_server.sh` |
-| XTTS "Python >= 3.9 and < 3.12" error | Python 3.12 not supported by Coqui TTS — use the reference venv (Python 3.11) |
-| Hecelenme / spelled letters | With XTTS v2 this should not happen. If it persists, check audio pipeline (sample rate, byte alignment) |
-| XTTS slow on first load | Normal — XTTS v2 is ~1.8 GB. Subsequent loads are cached |
+| OpenAI Realtime connection fails | Check `OPENAI_API_KEY`, outbound WebSocket access, and `OPENAI_REALTIME_MODEL=gpt-realtime-2.1` |
+| No user/assistant text in chat bubble | Keep `OPENAI_REALTIME_TRANSCRIPTION_MODEL=gpt-realtime-whisper`; audio still streams even if transcript metadata is missing |
+| Garbled audio | Check that `/chat_stream` returns `X-Sample-Rate: 24000` and the client is using the latest byte-aligned playback code |

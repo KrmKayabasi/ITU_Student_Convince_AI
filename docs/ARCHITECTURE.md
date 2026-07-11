@@ -6,7 +6,7 @@ This document provides a technical overview of the components, communication flo
 
 ## 🏛️ Component Overview
 
-The system uses a **client-server architecture** separating lightweight native processing on the client device from heavy LLM/ASR compute on the remote server:
+The system uses a **client-server architecture** separating native client processing from the speech and CV backend services:
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
@@ -27,9 +27,9 @@ The system uses a **client-server architecture** separating lightweight native p
 ┌──────────────────────────┐  ┌────────────────────────────────┐
 │  CV Pipeline Container   │  │  Speech Server (FastAPI :8002) │
 │  (FastAPI :8000)         │  │                                │
-│                          │  │  Whisper Large v3 Turbo →      │
-│  MediaPipe Face/Pose     │  │  Gemma 4 12B →                │
-│  ONNX Emotion (1Hz)      │  │  Coqui XTTS v2 (24000 Hz)     │
+│                          │  │  OpenAI Realtime bridge        │
+│  MediaPipe Face/Pose     │  │  gpt-realtime-2.1             │
+│  ONNX Emotion (1Hz)      │  │  24kHz PCM stream              │
 │  Session State Machine   │  │                                │
 │                          │  │  backend/speech_backend/       │
 │  backend/cv_pipeline/    │  │  server.py                     │
@@ -67,13 +67,14 @@ The system uses a **client-server architecture** separating lightweight native p
 
 | File | Role |
 |------|------|
-| `server.py` | FastAPI app: `/chat_stream`, `/reset`, `/last_turn`, `/health` with optional Bearer token auth. **One-pass synthesis**: accumulates full LLM response, then synthesizes entire text at once |
-| `config.py` | Unified configuration (shared between server and standalone pipeline), Markdown-stripped system prompt, all env-overridable |
-| `model_handler.py` | `GemmaAudioProcessor`: MLX (Mac) and CUDA (Linux) inference paths, streaming generation. Clause splitter: splits only on `. ! ?`, commas/newlines stay inside for prosody, digit-guard prevents number-with-period splits |
-| `tts_handler.py` | `OfflineTTSHandler`: **Coqui XTTS v2** (default, 24000 Hz, character-based), Sherpa-ONNX/Piper VITS (22050 Hz, espeak-based), Supertonic, MMS-TTS, dummy (sine wave). Scoped monkey-patches restored after model load |
+| `server.py` | FastAPI app: `/chat_stream`, `/reset`, `/last_turn`, `/health` with optional Bearer token auth. Defaults to OpenAI Realtime provider |
+| `openai_realtime_bridge.py` | Persistent Realtime WebSocket bridge; resamples 16kHz float32 input to 24kHz PCM16 and streams PCM output back as float32 |
+| `config.py` | Unified configuration, Markdown-stripped system prompt, provider switch, all env-overridable |
+| `model_handler.py` | Legacy cascaded `GemmaAudioProcessor`: used only with `SPEECH_PROVIDER=cascaded` |
+| `tts_handler.py` | Legacy cascaded `OfflineTTSHandler`: used only with `SPEECH_PROVIDER=cascaded` |
 | `audio_handler.py` | `AudioHandler`: WebRTC noise suppression, Silero VAD, playout with barge-in interruption, SHA-256 verified model download |
 | `pipeline.py` | Standalone speech-to-speech pipeline (alternative to client-server mode) |
-| `client.py` | Thin client for remote H200 server (audio capture → POST → stream playout) |
+| `client.py` | Thin terminal client for the speech server (audio capture → POST → stream playout) |
 | `client_config.py` | Client-side configuration (server URL, auth token, VAD params) |
 | `training/train_multimodal.py` | LoRA fine-tuning script for Gemma 4 on Turkish speech datasets (uses `--audio-root` instead of hardcoded paths) |
 
@@ -102,51 +103,45 @@ tests/
 └── voice_agent/             —  4 tests (pipeline loader, audio capture, speech integration, e2e)
 ```
 
-**137 tests total. Run with:** `pytest tests/ -v`
+Run with: `pytest tests/ -v`
 
 ---
 
-## 🔧 TTS Architecture — Coqui XTTS v2
+## 🔧 Speech Architecture — OpenAI Realtime
 
-The speech server uses **Coqui XTTS v2** as the default TTS engine (overridable via `TTS_MODEL_ID` env var).
+The speech server uses **OpenAI Realtime** (`gpt-realtime-2.1`) by default. This replaces the old server-side Whisper → Gemma → TTS cascade while preserving the desktop client's local Silero VAD and DiariZen diarisation.
 
-### Why XTTS v2?
+### Why Realtime?
 
-| Aspect | Piper VITS (espeak-ng) | Coqui XTTS v2 |
-|--------|------------------------|---------------|
-| Phonemization | espeak-ng → IPA → token IDs → VITS | **Character-based** — text directly |
-| Turkish chars | Needs proper espeak-ng data + voice file | **Native** — ğ,ş,ç,ö,ü,ı handled directly |
-| Uppercase | Spells letter-by-letter without lowercase | **Auto-normalizes** |
-| Markdown chars | Reads `*` as "yıldız" | **Auto-strips** internally |
-| Sample rate | 22050 Hz (Piper) | 24000 Hz |
-| Hecelenme risk | **HIGH** (3-layer pipeline: text→phoneme→token→audio) | **ZERO** (single-layer: text→audio) |
+| Aspect | Cascaded local path | OpenAI Realtime path |
+|--------|---------------------|----------------------|
+| Components | Whisper + Gemma + XTTS/Piper | `gpt-realtime-2.1` |
+| Local GPU need | High | None on speech server |
+| Latency | Sequential STT, LLM, TTS hops | Audio deltas stream from one session |
+| Client protocol | `/chat_stream` float32 PCM | Same `/chat_stream` contract |
+| VAD/diarisation | Local client | Local client, unchanged |
 
-### Pipeline flow:
+### Pipeline Flow:
 
 ```
-Gemma 4 12B streaming response
+Desktop mic → Silero VAD turn boundary
        │
-       ▼ clause splitter (. ! ?) — commas/newlines stay inside
-accumulated full_response_parts[]
+       ▼ DiariZen speaker diarisation for UI speaker labels
+float32 PCM 16 kHz POST /chat_stream
        │
-       ▼ " ".join() — single text string
-tts.synthesize(full_text)  ← ONE CALL, full context
+       ▼ resample to 24 kHz + PCM16 + input_audio_buffer.commit
+OpenAI Realtime gpt-realtime-2.1
        │
-       ▼ XTTS v2 internally: lowercase → text split → encodec → hifi-gan
-24000 Hz float32 waveform
-       │
-       ▼ stream in 1024-sample chunks → client
+       ▼ response.audio.delta PCM chunks
+float32 PCM 24 kHz stream → desktop playout
 ```
 
-### Supported TTS backends:
+### Speech Providers:
 
-| Backend | `TTS_MODEL_ID` / `TURKISH_TTS_BACKEND` | Sample rate | Requires |
-|---------|----------------------------------------|-------------|----------|
-| **Coqui XTTS v2** | `xtts` (default) | 24000 Hz | `TTS` package, Python < 3.12 |
-| Piper VITS | local path to model dir | 22050 Hz | `sherpa-onnx` |
-| Supertonic | `supertonic` | 44100 Hz | `supertonic` package |
-| MMS-TTS | HF model ID | 16000 Hz | `transformers` |
-| Dummy (sine) | `dummy` | 24000 Hz | None (dev/test) |
+| Provider | Env | Requires |
+|----------|-----|----------|
+| OpenAI Realtime | `SPEECH_PROVIDER=openai_realtime` | `OPENAI_API_KEY`, outbound WebSocket access |
+| Legacy cascaded | `SPEECH_PROVIDER=cascaded` | Whisper/Gemma/TTS dependencies and suitable GPU |
 
 ---
 
@@ -248,11 +243,11 @@ IDLE ──(face detected)──→ CALIBRATING ──(3s elapsed)──→ ACTI
 
 ## ⚡ Performance Considerations
 
-- **One-pass TTS synthesis**: Full LLM response synthesized at once — no clause-boundary artifacts, no inter-clause silence artifacts, no micro-fade events
+- **Realtime speech path**: OpenAI Realtime removes the separate STT, LLM, and TTS hops from the default server path
 - **Byte-aligned client**: `iter_bytes` chunks reassembled at float32 (4-byte) boundaries — immune to TCP fragmentation misalignment
 - **Emotion inference at 1 Hz** in a background thread — does not block the 15fps main pipeline
 - **Health checks via HTTP** instead of spawning `nc` and `docker compose ps` subprocesses (was 120/min, now ~7/min via httpx + throttled Docker polling)
 - **MLX tempfile uses `delete=True`** — auto-cleanup by the OS, no manual `os.unlink` needed
 - **Face detection limited to `MAX_NUM_FACES` (default 3)** to bound MediaPipe processing time
 - **Pose detection limited to `MAX_NUM_POSES` (default 3)** similarly bounded
-- **Client reads `X-Sample-Rate` header** — playback stream created at the exact rate reported by the server (24000 Hz for XTTS, 22050 for Piper)
+- **Client reads `X-Sample-Rate` header** — playback stream created at the exact rate reported by the server (24000 Hz for Realtime)

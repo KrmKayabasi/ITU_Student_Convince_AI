@@ -1,7 +1,7 @@
 import os
 
-# Server endpoint on H200
-SERVER_URL = os.environ.get("SPEECH_SERVER_URL", "http://192.168.2.9:8000/chat_stream")
+# Server endpoint for the local OpenAI Realtime speech server
+SERVER_URL = os.environ.get("SPEECH_SERVER_URL", "http://localhost:8002/chat_stream")
 
 # Auth token — set SPEECH_SERVER_TOKEN in the environment to match the server
 AUTH_TOKEN = os.environ.get("SPEECH_SERVER_TOKEN", "")

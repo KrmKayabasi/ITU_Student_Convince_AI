@@ -1,31 +1,15 @@
-# Optimized Speech Server Dockerfile for Dual NVIDIA H200 GPUs.
-# Uses NVIDIA's PyTorch NGC base container, pre-configured with CUDA 12, PyTorch, cuDNN, and NCCL.
+# Lightweight speech server container for OpenAI Realtime mode.
+# The default server path no longer needs local CUDA/Whisper/Gemma/TTS models.
 
-FROM nvcr.io/nvidia/pytorch:24.08-py3
+FROM python:3.11-slim
 
 WORKDIR /workspace
 
-# Install python dependencies for the cascaded architecture
-RUN pip install --no-cache-dir \
-    fastapi \
-    uvicorn \
-    httpx \
-    numpy \
-    scipy \
-    soundfile \
-    transformers \
-    accelerate \
-    sounddevice \
-    sherpa-onnx
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
 
-# Install torchaudio and Coqui TTS while preserving NGC CUDA/PyTorch packages
-RUN git clone --depth 1 --branch v2.5.0 https://github.com/pytorch/audio.git /tmp/torchaudio && \
-    cd /tmp/torchaudio && \
-    sed -i '1s/^/#include <cfloat>\n/' src/libtorchaudio/cuctc/src/ctc_prefix_decoder_kernel_v2.cu && \
-    git submodule update --init --recursive && \
-    pip install --no-cache-dir --no-build-isolation --no-deps . && \
-    rm -rf /tmp/torchaudio
-RUN pip install --no-cache-dir coqui-tts
+COPY requirements_server.txt /workspace/requirements_server.txt
+RUN pip install --no-cache-dir -r /workspace/requirements_server.txt
 
 # Copy speech server source code and assets
 COPY . /workspace/

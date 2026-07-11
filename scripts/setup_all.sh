@@ -7,6 +7,11 @@ set -e
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 echo "=== Starting unified dependency setup inside $PROJECT_ROOT ==="
 
+if ! ldconfig -p 2>/dev/null | grep -q "libportaudio"; then
+    echo "WARNING: PortAudio was not found. Microphone support requires:" >&2
+    echo "  sudo apt install libportaudio2 portaudio19-dev" >&2
+fi
+
 # --- 1. Set up Root Environment (FastAPI Backend + PyQt6 GUI + Voice Assistant) ---
 echo "--- Step 1: Setting up root virtual environment (.venv) ---"
 cd "$PROJECT_ROOT"
@@ -17,21 +22,10 @@ if [ -d ".venv" ]; then
     rm -rf .venv
 fi
 
-echo "Creating fresh .venv using uv..."
-uv venv
-
-echo "Activating root .venv..."
-source .venv/bin/activate
-
-echo "Installing non-conflicting core and UI requirements..."
-# Install requirements with relaxed bounds to prevent websocket conflicts
-uv pip install fastapi uvicorn "websockets>=13.1,<17.0" opencv-python opencv-python-headless numpy==1.26.4 mediapipe onnxruntime PyQt6 PyQt6-WebEngine pytest
-
-echo "Installing editable voice agent and diarisen speaker diarisation packages..."
-uv pip install -e backend/voice_agent
+echo "Creating and syncing fresh .venv using uv with Python 3.12..."
+uv sync --python 3.12
 
 echo "Root virtual environment setup successfully completed!"
-deactivate
 
 # --- 2. Ensure permissions ---
 echo "--- Step 2: Granting executable permissions to all setup/run scripts ---"

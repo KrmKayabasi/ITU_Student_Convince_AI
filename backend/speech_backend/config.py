@@ -1,6 +1,21 @@
 import os
 import sys
 
+# --- SPEECH PROVIDER ---
+# openai_realtime replaces the local STT -> LLM -> TTS cascade with the
+# OpenAI Realtime API while keeping the same local VAD/diarization client flow.
+SPEECH_PROVIDER = os.environ.get("SPEECH_PROVIDER", "openai_realtime").lower()
+
+# OpenAI Realtime configuration
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+OPENAI_REALTIME_MODEL = os.environ.get("OPENAI_REALTIME_MODEL", "gpt-realtime-2.1")
+OPENAI_REALTIME_VOICE = os.environ.get("OPENAI_REALTIME_VOICE", "marin")
+OPENAI_REALTIME_TRANSCRIPTION_MODEL = os.environ.get(
+    "OPENAI_REALTIME_TRANSCRIPTION_MODEL",
+    "gpt-realtime-whisper",
+)
+OPENAI_REALTIME_LANGUAGE = os.environ.get("OPENAI_REALTIME_LANGUAGE", "tr")
+
 # --- MODEL CONFIGURATION ---
 # Gemma 4 models: "google/gemma-4-e2b-it", "google/gemma-4-e4b-it", "google/gemma-4-12b-it"
 # The server deployment uses a larger model; override via GEMMA_MODEL_ID or MODEL_ID env vars.
