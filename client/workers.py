@@ -44,6 +44,19 @@ def _load_sounddevice():
     return sd
 
 
+def list_audio_devices() -> tuple[list[tuple[int, str]], list[tuple[int, str]]]:
+    sd = _load_sounddevice()
+    inputs = []
+    outputs = []
+    for index, device in enumerate(sd.query_devices()):
+        name = str(device.get("name", f"Device {index}"))
+        if device.get("max_input_channels", 0) > 0:
+            inputs.append((index, name))
+        if device.get("max_output_channels", 0) > 0:
+            outputs.append((index, name))
+    return inputs, outputs
+
+
 def _ensure_sherpa_onnxruntime_link() -> None:
     onnx_spec = importlib.util.find_spec("onnxruntime")
     sherpa_spec = importlib.util.find_spec("sherpa_onnx")
@@ -78,6 +91,75 @@ def _load_sherpa_onnx():
         sys.modules.pop("sherpa_onnx", None)
         _ensure_sherpa_onnxruntime_link()
         return importlib.import_module("sherpa_onnx")
+
+
+class SpeakerTracker:
+    """Assign stable anonymous speaker IDs across utterances in one session."""
+
+    def __init__(self, threshold: float = 0.35):
+        self.threshold = threshold
+        self._centroids: dict[int, np.ndarray] = {}
+        self._counts: dict[int, int] = {}
+        self._next_id = 0
+
+    @staticmethod
+    def _normalize(embedding: np.ndarray) -> np.ndarray | None:
+        vector = np.asarray(embedding, dtype=np.float32).reshape(-1)
+        norm = float(np.linalg.norm(vector))
+        if not np.isfinite(norm) or norm <= 1e-8:
+            return None
+        return vector / norm
+
+    def reset(self) -> None:
+        self._centroids.clear()
+        self._counts.clear()
+        self._next_id = 0
+
+    def assign(self, local_embeddings: dict) -> dict:
+        normalized = {
+            label: vector
+            for label, embedding in local_embeddings.items()
+            if (vector := self._normalize(embedding)) is not None
+        }
+        assignments = {}
+        available_global_ids = set(self._centroids)
+
+        candidates = []
+        for label, vector in normalized.items():
+            for global_id in available_global_ids:
+                distance = 1.0 - float(np.dot(vector, self._centroids[global_id]))
+                candidates.append((distance, label, global_id))
+
+        used_labels = set()
+        used_global_ids = set()
+        for distance, label, global_id in sorted(candidates):
+            if distance > self.threshold:
+                break
+            if label in used_labels or global_id in used_global_ids:
+                continue
+            assignments[label] = global_id
+            used_labels.add(label)
+            used_global_ids.add(global_id)
+
+        for label in normalized:
+            if label not in assignments:
+                assignments[label] = self._next_id
+                self._next_id += 1
+
+        for label, global_id in assignments.items():
+            vector = normalized[label]
+            if global_id not in self._centroids:
+                self._centroids[global_id] = vector
+                self._counts[global_id] = 1
+                continue
+            count = self._counts[global_id]
+            updated = self._centroids[global_id] * count + vector
+            normalized_update = self._normalize(updated)
+            if normalized_update is not None:
+                self._centroids[global_id] = normalized_update
+                self._counts[global_id] = count + 1
+
+        return assignments
 
 
 # ── Pipeline Loader ───────────────────────────────────────────────────────────
@@ -124,16 +206,40 @@ class AudioCaptureWorker(QThread):
     speech_started = pyqtSignal()
     speech_stopped = pyqtSignal()
     audio_recorded = pyqtSignal(np.ndarray)
+    level_changed = pyqtSignal(float, float)
+    error_occurred = pyqtSignal(str)
 
-    def __init__(self, sample_rate=SAMPLE_RATE):
+    def __init__(self, sample_rate=SAMPLE_RATE, input_device=None,
+                 noise_suppression=True, ns_level=2, auto_gain_control=True,
+                 use_vad=True, capture_enabled=False):
         super().__init__()
         self.sd = _load_sounddevice()
         self.sample_rate = sample_rate
+        self.input_device = input_device
         self._lock = threading.Lock()
         self._is_recording = False
         self.is_active = True
-        self._use_vad = True
+        self._use_vad = use_vad
+        self._capture_enabled = capture_enabled
+        self._noise_suppression_enabled = noise_suppression
         self._buffer: list = []
+        self._audio_processor = None
+
+        try:
+            from pywebrtc_audio import AudioProcessor
+
+            self._audio_processor = AudioProcessor(
+                sample_rate=sample_rate,
+                num_channels=1,
+                noise_suppression=True,
+                high_pass_filter=True,
+                auto_gain_control=auto_gain_control,
+                echo_cancellation=False,
+                ns_level=max(0, min(3, ns_level)),
+                agc_max_gain_db=12.0,
+            )
+        except Exception as e:
+            print(f"[Audio Warning] Noise suppression unavailable: {e}", flush=True)
 
         # Load Silero VAD for voice activity boundary detection
         sherpa_onnx = _load_sherpa_onnx()
@@ -178,6 +284,30 @@ class AudioCaptureWorker(QThread):
             self._use_vad = value
 
     @property
+    def capture_enabled(self) -> bool:
+        with self._lock:
+            return self._capture_enabled
+
+    @capture_enabled.setter
+    def capture_enabled(self, value: bool) -> None:
+        with self._lock:
+            self._capture_enabled = value
+
+    @property
+    def noise_suppression_enabled(self) -> bool:
+        with self._lock:
+            return self._noise_suppression_enabled
+
+    @noise_suppression_enabled.setter
+    def noise_suppression_enabled(self, value: bool) -> None:
+        with self._lock:
+            self._noise_suppression_enabled = value
+
+    @property
+    def noise_suppression_available(self) -> bool:
+        return self._audio_processor is not None
+
+    @property
     def buffer(self) -> list:
         with self._lock:
             return list(self._buffer)
@@ -208,11 +338,57 @@ class AudioCaptureWorker(QThread):
         sd = self.sd
         pre_roll = deque(maxlen=20)  # 400ms pre-speech frames
         self.vad.reset()
+        capture_was_enabled = False
+        meter_frame = 0
+        processor_failed = False
 
         def callback(indata, frames, time_info, status):
+            nonlocal capture_was_enabled, meter_frame, processor_failed
             if not self.is_active:
                 raise sd.CallbackAbort()
-            samples = indata[:, 0].copy()
+
+            if status:
+                self.error_occurred.emit(f"Audio input warning: {status}")
+
+            if not self.capture_enabled:
+                if capture_was_enabled:
+                    self.is_recording = False
+                    self._buffer_drain()
+                    pre_roll.clear()
+                    self.vad.reset()
+                    if self._audio_processor is not None:
+                        self._audio_processor.reset()
+                capture_was_enabled = False
+                return
+
+            if not capture_was_enabled:
+                self.vad.reset()
+                pre_roll.clear()
+                if self._audio_processor is not None:
+                    self._audio_processor.reset()
+                capture_was_enabled = True
+
+            raw_samples = np.ascontiguousarray(indata[:, 0], dtype=np.float32)
+            samples = raw_samples
+            if (
+                self.noise_suppression_enabled
+                and self._audio_processor is not None
+                and not processor_failed
+            ):
+                try:
+                    samples = self._audio_processor.process(raw_samples)
+                except Exception as e:
+                    processor_failed = True
+                    self.error_occurred.emit(f"Noise suppression disabled after error: {e}")
+                    samples = raw_samples
+
+            samples = np.nan_to_num(samples, copy=False).astype(np.float32, copy=False)
+            meter_frame += 1
+            if meter_frame >= 5:
+                meter_frame = 0
+                raw_rms = float(np.sqrt(np.mean(raw_samples**2))) if len(raw_samples) else 0.0
+                clean_rms = float(np.sqrt(np.mean(samples**2))) if len(samples) else 0.0
+                self.level_changed.emit(raw_rms, clean_rms)
 
             # Re-read VAD mode each callback (it can change mid-stream)
             use_vad_snapshot = self.use_vad
@@ -260,16 +436,20 @@ class AudioCaptureWorker(QThread):
                 if self.is_recording:
                     self._buffer_append(samples)
 
-        stream = sd.InputStream(
-            samplerate=self.sample_rate,
-            channels=1,
-            blocksize=320,  # 20ms frames
-            callback=callback,
-        )
+        try:
+            stream = sd.InputStream(
+                samplerate=self.sample_rate,
+                channels=1,
+                blocksize=320,  # 20ms frames
+                callback=callback,
+                device=self.input_device,
+            )
 
-        with stream:
-            while self.is_active:
-                self.msleep(100)
+            with stream:
+                while self.is_active:
+                    self.msleep(100)
+        except Exception as e:
+            self.error_occurred.emit(f"Microphone unavailable: {e}")
 
 
 # ── Response Generator ────────────────────────────────────────────────────────
@@ -281,19 +461,27 @@ class ResponseGeneratorWorker(QThread):
     text_ready = pyqtSignal(str, str)
 
     def __init__(self, audio_data, pipeline, cascaded_url="http://localhost:8002",
-                 auth_token=None):
+                 auth_token=None, session_id="default", diarization_enabled=True,
+                 output_device=None, speaker_tracker=None):
         super().__init__()
         self.audio_data = audio_data
         self.pipeline = pipeline
         self.cascaded_url = cascaded_url
         self.auth_token = auth_token
+        self.session_id = session_id
+        self.diarization_enabled = diarization_enabled
+        self.output_device = output_device
+        self.speaker_tracker = speaker_tracker
+        self.speaker_id = None
         self.is_interrupted = False
 
     def interrupt(self):
         self.is_interrupted = True
 
     def _make_headers(self) -> dict:
-        headers = {}
+        headers = {"X-Session-ID": self.session_id}
+        if self.speaker_id is not None:
+            headers["X-Speaker-ID"] = str(self.speaker_id)
         if self.auth_token:
             headers["Authorization"] = f"Bearer {self.auth_token}"
         return headers
@@ -302,20 +490,32 @@ class ResponseGeneratorWorker(QThread):
         if len(self.audio_data) == 0:
             return
 
+        turn_started = time.perf_counter()
+
         # 1. Run DiariZen Speaker Diarisation
-        self.status_changed.emit("Diarizing speech...")
         turns = []
         tmp_path = None
-        try:
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_file:
-                tmp_path = tmp_file.name
-            # Convert float32 to int16 for WAV output
-            pcm_audio = (self.audio_data * 32767).astype(np.int16)
-            wav.write(tmp_path, 16000, pcm_audio)
+        diarization_started = time.perf_counter()
+        if self.diarization_enabled and self.pipeline is not None:
+            self.status_changed.emit("Diarizing speech...")
+            try:
+                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_file:
+                    tmp_path = tmp_file.name
+                pcm_audio = (np.clip(self.audio_data, -1.0, 1.0) * 32767).astype(np.int16)
+                wav.write(tmp_path, SAMPLE_RATE, pcm_audio)
+                try:
+                    diar_results, local_embeddings = self.pipeline(
+                        tmp_path,
+                        return_embeddings=True,
+                    )
+                except TypeError:
+                    diar_results = self.pipeline(tmp_path)
+                    local_embeddings = {}
 
-            if self.pipeline:
-                diar_results = self.pipeline(tmp_path)
-                speaker_map = {}
+                if self.speaker_tracker is not None and local_embeddings:
+                    speaker_map = self.speaker_tracker.assign(local_embeddings)
+                else:
+                    speaker_map = {}
                 for turn, _, speaker in diar_results.itertracks(yield_label=True):
                     if speaker not in speaker_map:
                         speaker_map[speaker] = len(speaker_map)
@@ -324,13 +524,24 @@ class ResponseGeneratorWorker(QThread):
                         "end": float(turn.end),
                         "speaker_id": speaker_map[speaker],
                     })
-            self.diarisation_ready.emit(turns)
-        except Exception as e:
-            print(f"[Diarisation Error] Failed to run diarisation: {e}", flush=True)
-            self.diarisation_ready.emit([])
-        finally:
-            if tmp_path and os.path.exists(tmp_path):
-                os.unlink(tmp_path)
+            except Exception as e:
+                print(f"[Diarisation Error] Failed to run diarisation: {e}", flush=True)
+            finally:
+                if tmp_path and os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
+        self.diarisation_ready.emit(turns)
+        if turns:
+            durations = {}
+            for turn in turns:
+                speaker_id = turn["speaker_id"]
+                durations[speaker_id] = durations.get(speaker_id, 0.0) + turn["end"] - turn["start"]
+            self.speaker_id = max(durations, key=durations.get)
+        diarization_ms = (time.perf_counter() - diarization_started) * 1000
+        print(
+            f"[Perf] diarization={self.diarization_enabled and self.pipeline is not None} "
+            f"diarization_ms={diarization_ms:.0f}",
+            flush=True,
+        )
 
         # 2. Call Cascaded Speech Server
         self.status_changed.emit("Generating response...")
@@ -394,6 +605,7 @@ class ResponseGeneratorWorker(QThread):
                         channels=1,
                         callback=play_callback,
                         blocksize=512,
+                        device=self.output_device,
                     )
                     play_stream.start()
 
@@ -405,9 +617,17 @@ class ResponseGeneratorWorker(QThread):
                     # partial reads.  We buffer partial bytes and reassemble
                     # at float32 (4-byte) boundaries to prevent garbled audio.
                     _byte_buf = b""
+                    first_audio_received = False
                     for chunk in response.iter_bytes(chunk_size=1024 * 4):
                         if self.is_interrupted:
                             break
+                        if chunk and not first_audio_received:
+                            first_audio_received = True
+                            print(
+                                f"[Perf] first_audio_ms="
+                                f"{(time.perf_counter() - turn_started) * 1000:.0f}",
+                                flush=True,
+                            )
                         _byte_buf += chunk
                         # Process complete float32 samples (4 bytes each)
                         n_complete = (len(_byte_buf) // 4) * 4
@@ -455,6 +675,31 @@ class ResponseGeneratorWorker(QThread):
         self.status_changed.emit("Idle")
 
 
+class SpeechResetWorker(QThread):
+    completed = pyqtSignal(bool, str)
+
+    def __init__(self, server_url: str, session_id: str, auth_token=None):
+        super().__init__()
+        self.server_url = server_url
+        self.session_id = session_id
+        self.auth_token = auth_token
+
+    def run(self):
+        headers = {"X-Session-ID": self.session_id}
+        if self.auth_token:
+            headers["Authorization"] = f"Bearer {self.auth_token}"
+        try:
+            response = httpx.post(
+                f"{self.server_url}/reset",
+                headers=headers,
+                timeout=5.0,
+            )
+            response.raise_for_status()
+            self.completed.emit(True, "Session reset")
+        except Exception as e:
+            self.completed.emit(False, f"Session reset failed: {e}")
+
+
 # ── Camera Stream ─────────────────────────────────────────────────────────────
 
 class StreamWorker(QThread):
@@ -463,6 +708,7 @@ class StreamWorker(QThread):
     debug_ready = pyqtSignal(dict)
     profile_ready = pyqtSignal(dict)
     focus_ready = pyqtSignal(dict)
+    error_occurred = pyqtSignal(str)
 
     def __init__(self, server: str, session_id: str, camera_index: int, fps: float,
                  auth_token=None, cap=None):
@@ -487,7 +733,9 @@ class StreamWorker(QThread):
             if cap is None:
                 cap = cv2.VideoCapture(self.camera_index)
             if not cap.isOpened():
-                print(f"[CV Error] Camera index {self.camera_index} cannot be opened.")
+                message = f"Camera index {self.camera_index} cannot be opened; voice remains available"
+                print(f"[CV Error] {message}")
+                self.error_occurred.emit(message)
                 return
 
             # Build URIs with optional auth token as query parameter
@@ -514,43 +762,45 @@ class StreamWorker(QThread):
                         break
                     await asyncio.sleep(interval)
 
-            async def recv_debug():
-                async for ws in websockets.connect(uri_debug):
+            async def receive(uri, signal):
+                while not self._stop_event.is_set():
                     try:
-                        async for msg in ws:
-                            self.debug_ready.emit(json.loads(msg))
-                    except websockets.ConnectionClosed:
-                        continue
+                        async with websockets.connect(uri, open_timeout=2) as ws:
+                            async for msg in ws:
+                                if self._stop_event.is_set():
+                                    return
+                                signal.emit(json.loads(msg))
+                    except Exception:
+                        if not self._stop_event.is_set():
+                            await asyncio.sleep(1.0)
 
-            async def recv_profile():
-                async for ws in websockets.connect(uri_profile):
-                    try:
-                        async for msg in ws:
-                            self.profile_ready.emit(json.loads(msg))
-                    except websockets.ConnectionClosed:
-                        continue
+            while not self._stop_event.is_set():
+                tasks = []
+                try:
+                    async with websockets.connect(uri_stream, open_timeout=2) as ws:
+                        tasks = [
+                            asyncio.create_task(send_frames(ws)),
+                            asyncio.create_task(receive(uri_debug, self.debug_ready)),
+                            asyncio.create_task(receive(uri_profile, self.profile_ready)),
+                            asyncio.create_task(receive(uri_focus, self.focus_ready)),
+                        ]
+                        _, pending = await asyncio.wait(
+                            tasks,
+                            return_when=asyncio.FIRST_COMPLETED,
+                        )
+                        for task in pending:
+                            task.cancel()
+                        await asyncio.gather(*pending, return_exceptions=True)
+                except Exception as e:
+                    if not self._stop_event.is_set():
+                        self.error_occurred.emit(f"CV service unavailable; retrying: {e}")
+                        await asyncio.sleep(1.0)
+                finally:
+                    for task in tasks:
+                        if not task.done():
+                            task.cancel()
 
-            async def recv_focus():
-                async for ws in websockets.connect(uri_focus):
-                    try:
-                        async for msg in ws:
-                            self.focus_ready.emit(json.loads(msg))
-                    except websockets.ConnectionClosed:
-                        continue
-
-            try:
-                async with websockets.connect(uri_stream) as ws:
-                    await asyncio.gather(
-                        send_frames(ws),
-                        recv_debug(),
-                        recv_profile(),
-                        recv_focus(),
-                        return_exceptions=True,
-                    )
-            except Exception as e:
-                print(f"[CV WS Error] WS connection lost: {e}")
-            finally:
-                cap.release()
+            cap.release()
 
         # Run event loop inside thread
         import cv2

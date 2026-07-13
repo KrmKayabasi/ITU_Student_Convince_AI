@@ -107,9 +107,15 @@ class OpenAIRealtimeBridge:
             self._last_assistant_text = ""
             await self._close_ws()
 
-    async def stream_turn(self, audio_data: np.ndarray) -> AsyncIterator[bytes]:
+    async def stream_turn(
+        self,
+        audio_data: np.ndarray,
+        speaker_id: int | None = None,
+    ) -> AsyncIterator[bytes]:
         async with self._lock:
             await self._ensure_connected()
+            self._last_user_text = ""
+            self._last_assistant_text = ""
             user_text = ""
             assistant_parts: list[str] = []
 
@@ -123,12 +129,23 @@ class OpenAIRealtimeBridge:
 
             await self._send_json({"type": "input_audio_buffer.append", "audio": audio_b64})
             await self._send_json({"type": "input_audio_buffer.commit"})
-            await self._send_json({"type": "response.create"})
+            response_create: dict[str, Any] = {"type": "response.create"}
+            if speaker_id is not None:
+                response_create["response"] = {
+                    "instructions": (
+                        f"{self.instructions}\n\n"
+                        "This is a shared group conversation. The current turn is from "
+                        f"Visitor {speaker_id + 1}. Address this visitor's own goals and "
+                        "do not assume their personal details are the same as those of "
+                        "previous visitors. Keep earlier turns as conversational context."
+                    )
+                }
+            await self._send_json(response_create)
 
             response_complete = False
             try:
                 while True:
-                    event = await self._recv_json()
+                    event = await asyncio.wait_for(self._recv_json(), timeout=60.0)
                     event_type = event.get("type", "")
 
                     if event_type == "error":
@@ -169,6 +186,11 @@ class OpenAIRealtimeBridge:
                         continue
 
                     if event_type == "response.done":
+                        response_status = (event.get("response") or {}).get("status")
+                        if response_status and response_status != "completed":
+                            raise RuntimeError(
+                                f"OpenAI Realtime response ended with status {response_status}"
+                            )
                         done_transcript = _extract_response_transcript(event)
                         if done_transcript:
                             assistant_parts = [done_transcript]
@@ -177,6 +199,9 @@ class OpenAIRealtimeBridge:
 
             except asyncio.CancelledError:
                 await self._cancel_response()
+                raise
+            except Exception:
+                await self._close_ws()
                 raise
             finally:
                 if response_complete:

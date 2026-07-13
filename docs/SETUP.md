@@ -213,6 +213,11 @@ export SPEECH_PROVIDER=cascaded
 | `OPENAI_REALTIME_VOICE` | `marin` | Realtime voice |
 | `OPENAI_REALTIME_TRANSCRIPTION_MODEL` | `gpt-realtime-whisper` | Input transcript model for `/last_turn` |
 | `OPENAI_REALTIME_LANGUAGE` | `tr` | Input transcription language |
+| `FESTIVAL_MODE` | `1` | Start in half-duplex push-to-talk mode |
+| `AUDIO_NOISE_SUPPRESSION` | `1` | Apply WebRTC preprocessing before VAD and GPT |
+| `AUDIO_NS_LEVEL` | `2` | WebRTC suppression level from 0 to 3 |
+| `ENABLE_DIARIZATION` | `1` | Load and run DiariZen; set to `0` for latency comparison |
+| `SPEAKER_MATCH_THRESHOLD` | `0.35` | Maximum cosine distance for matching a speaker across turns; lower is stricter |
 | `TTS_MODEL_ID` | `xtts` | Legacy cascaded TTS backend only |
 | `TURKISH_TTS_BACKEND` | (empty) | Legacy cascaded TTS alt backend only |
 | `GEMMA_MODEL_ID` | `google/gemma-4-e4b-it` | Legacy cascaded model ID |

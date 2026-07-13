@@ -23,6 +23,7 @@ from __future__ import annotations
 import sys
 import os
 import argparse
+import uuid
 from pathlib import Path
 import numpy as np
 import cv2
@@ -63,13 +64,18 @@ from PyQt6.QtWidgets import (
     QGroupBox,
     QScrollArea,
     QCheckBox,
+    QComboBox,
+    QProgressBar,
 )
 
 from client.workers import (
     PipelineLoaderWorker,
     AudioCaptureWorker,
     ResponseGeneratorWorker,
+    SpeakerTracker,
+    SpeechResetWorker,
     StreamWorker,
+    list_audio_devices,
     SAMPLE_RATE,
 )
 from client.metrics import format_metrics
@@ -172,7 +178,7 @@ def _build_right_panel(main_window: MainWindow) -> QWidget:
     panel.setStyleSheet("border: 1px solid #2d2d2d; background-color: #1e1e1e;")
     vbox = QVBoxLayout(panel)
 
-    header = QLabel("İTÜ Tercih Danışmanı (Gemma 12B Voice Assistant)")
+    header = QLabel("İTÜ Tercih Danışmanı (GPT Realtime)")
     header.setStyleSheet("font-size: 16px; font-weight: bold; color: #eceff1; padding: 6px;")
     vbox.addWidget(header)
 
@@ -196,15 +202,65 @@ def _build_right_panel(main_window: MainWindow) -> QWidget:
     )
     ctrl_layout = QVBoxLayout(ctrl_box)
 
-    main_window.lbl_status = QLabel("Status: Loading AI model...")
-    main_window.lbl_status.setStyleSheet("font-size: 12px; font-weight: bold; color: #ffd740;")
+    main_window.lbl_status = QLabel("Oturumu başlatmak için hazır")
+    main_window.lbl_status.setStyleSheet("font-size: 15px; font-weight: bold; color: #ffd740;")
     ctrl_layout.addWidget(main_window.lbl_status)
+
+    session_buttons = QHBoxLayout()
+    main_window.btn_start_session = QPushButton("Oturumu Başlat")
+    main_window.btn_start_session.setStyleSheet(
+        "background-color: #1b5e20; color: white; padding: 10px; "
+        "font-weight: bold; border-radius: 5px;"
+    )
+    main_window.btn_start_session.clicked.connect(main_window._start_session)
+    main_window.btn_new_visitor = QPushButton("Yeni Ziyaretçi")
+    main_window.btn_new_visitor.setStyleSheet(
+        "background-color: #37474f; color: white; padding: 10px; "
+        "font-weight: bold; border-radius: 5px;"
+    )
+    main_window.btn_new_visitor.clicked.connect(main_window._new_visitor)
+    session_buttons.addWidget(main_window.btn_start_session)
+    session_buttons.addWidget(main_window.btn_new_visitor)
+    ctrl_layout.addLayout(session_buttons)
+
+    privacy_notice = QLabel(
+        "Oturum başlatıldığında mikrofon sesi OpenAI tarafından işlenir. "
+        "Yeni Ziyaretçi düğmesi konuşma bağlamını temizler."
+    )
+    privacy_notice.setWordWrap(True)
+    privacy_notice.setStyleSheet("color: #90a4ae; font-size: 10px;")
+    ctrl_layout.addWidget(privacy_notice)
+
+    device_grid = QGridLayout()
+    device_grid.addWidget(QLabel("Mikrofon:"), 0, 0)
+    main_window.input_device_combo = QComboBox()
+    device_grid.addWidget(main_window.input_device_combo, 0, 1)
+    device_grid.addWidget(QLabel("Hoparlör:"), 1, 0)
+    main_window.output_device_combo = QComboBox()
+    device_grid.addWidget(main_window.output_device_combo, 1, 1)
+    main_window.input_device_combo.currentIndexChanged.connect(main_window._on_audio_device_changed)
+    ctrl_layout.addLayout(device_grid)
+
+    meter_row = QHBoxLayout()
+    meter_row.addWidget(QLabel("Mikrofon seviyesi:"))
+    main_window.mic_meter = QProgressBar()
+    main_window.mic_meter.setRange(0, 100)
+    main_window.mic_meter.setValue(0)
+    main_window.mic_meter.setTextVisible(False)
+    main_window.lbl_noise = QLabel("Sessiz")
+    meter_row.addWidget(main_window.mic_meter, stretch=1)
+    meter_row.addWidget(main_window.lbl_noise)
+    ctrl_layout.addLayout(meter_row)
 
     hbox_toggles = QHBoxLayout()
     main_window.chk_vad = QCheckBox("Auto-Talk (VAD)")
-    main_window.chk_vad.setChecked(True)
+    main_window.chk_vad.setChecked(not main_window.festival_mode)
     main_window.chk_vad.setEnabled(False)
     main_window.chk_vad.stateChanged.connect(main_window._on_vad_toggle)
+
+    main_window.chk_noise = QCheckBox("Gürültü azaltma")
+    main_window.chk_noise.setChecked(main_window.args.noise_suppression)
+    main_window.chk_noise.stateChanged.connect(main_window._on_noise_toggle)
 
     main_window.btn_hold = QPushButton("Hold to Talk")
     main_window.btn_hold.setEnabled(False)
@@ -223,6 +279,7 @@ def _build_right_panel(main_window: MainWindow) -> QWidget:
     main_window.btn_interrupt.clicked.connect(main_window._on_interrupt)
 
     hbox_toggles.addWidget(main_window.chk_vad)
+    hbox_toggles.addWidget(main_window.chk_noise)
     hbox_toggles.addWidget(main_window.btn_hold)
     hbox_toggles.addWidget(main_window.btn_interrupt)
     ctrl_layout.addLayout(hbox_toggles)
@@ -245,6 +302,8 @@ class MainWindow(QMainWindow):
     def __init__(self, args):
         super().__init__()
         self.args = args
+        self.festival_mode = args.festival_mode
+        self.diarization_enabled = args.diarization
         self.speech_server_url = args.speech_server
         self.setWindowTitle("İTÜ AI Tercih Danışmanı - Desktop Voice Client")
         self.resize(1100, 700)
@@ -255,22 +314,20 @@ class MainWindow(QMainWindow):
         self.diarisation_timeline: list = []
         self.pipeline = None
         self.active_worker = None
+        self.audio_worker = None
+        self.loader = None
+        self.reset_worker = None
+        self.session_active = False
+        self.speech_session_id = uuid.uuid4().hex
+        self.speaker_tracker = (
+            SpeakerTracker(threshold=args.speaker_threshold)
+            if self.diarization_enabled
+            else None
+        )
         self._latest_debug = None
         self._latest_profile = None
         self._latest_focus = None
         self._poll_counter = 0
-
-        # Start background model loader
-        self.loader = PipelineLoaderWorker()
-        self.loader.loaded.connect(self._on_pipeline_loaded)
-        self.loader.start()
-
-        # Start VAD audio capture worker
-        self.audio_worker = AudioCaptureWorker(sample_rate=SAMPLE_RATE)
-        self.audio_worker.speech_started.connect(self._on_speech_started)
-        self.audio_worker.speech_stopped.connect(self._on_speech_stopped)
-        self.audio_worker.audio_recorded.connect(self._on_audio_recorded)
-        self.audio_worker.start()
 
         # Build Main Panels
         main_layout = QHBoxLayout()
@@ -281,6 +338,16 @@ class MainWindow(QMainWindow):
         central.setLayout(main_layout)
         self.setCentralWidget(central)
         self.setStyleSheet(DARK_THEME)
+
+        self._populate_audio_devices()
+        self._start_audio_worker()
+
+        if self.diarization_enabled:
+            self.loader = PipelineLoaderWorker()
+            self.loader.loaded.connect(self._on_pipeline_loaded)
+            self.loader.start()
+        else:
+            self.log_viewer.appendPlainText("[Voice] Diarization disabled")
 
         # Initialize video capture on the main GUI thread to comply with macOS AVFoundation restrictions
         self.cap = cv2.VideoCapture(args.camera_index)
@@ -294,6 +361,7 @@ class MainWindow(QMainWindow):
         self.worker.debug_ready.connect(self._on_debug)
         self.worker.profile_ready.connect(self._on_profile)
         self.worker.focus_ready.connect(self._on_focus)
+        self.worker.error_occurred.connect(self._on_cv_error)
         self.worker.start()
 
         # Status polling timer (every 3 seconds)
@@ -306,11 +374,71 @@ class MainWindow(QMainWindow):
     def _on_pipeline_loaded(self, pipeline):
         self.pipeline = pipeline
         if self.pipeline:
-            self.lbl_status.setText("Status: Idle")
-            self.btn_hold.setEnabled(True)
-            self.chk_vad.setEnabled(True)
+            self.log_viewer.appendPlainText("[Voice] DiariZen ready")
         else:
-            self.lbl_status.setText("Status: Model load failed")
+            self.log_viewer.appendPlainText("[Voice] DiariZen unavailable; voice remains active")
+
+    def _populate_audio_devices(self):
+        self.input_device_combo.blockSignals(True)
+        self.input_device_combo.addItem("Sistem varsayılanı", None)
+        self.output_device_combo.addItem("Sistem varsayılanı", None)
+        try:
+            inputs, outputs = list_audio_devices()
+            for index, name in inputs:
+                self.input_device_combo.addItem(name, index)
+            for index, name in outputs:
+                self.output_device_combo.addItem(name, index)
+        except Exception as e:
+            self.log_viewer.appendPlainText(f"[Audio Error] {e}")
+        self.input_device_combo.blockSignals(False)
+
+    def _start_audio_worker(self):
+        if self.audio_worker and self.audio_worker.isRunning():
+            self.audio_worker.stop()
+            self.audio_worker.wait(2000)
+        self.audio_worker = AudioCaptureWorker(
+            sample_rate=SAMPLE_RATE,
+            input_device=self.input_device_combo.currentData(),
+            noise_suppression=self.chk_noise.isChecked(),
+            ns_level=self.args.ns_level,
+            use_vad=self.chk_vad.isChecked(),
+            capture_enabled=self.session_active,
+        )
+        self.audio_worker.speech_started.connect(self._on_speech_started)
+        self.audio_worker.speech_stopped.connect(self._on_speech_stopped)
+        self.audio_worker.audio_recorded.connect(self._on_audio_recorded)
+        self.audio_worker.level_changed.connect(self._on_audio_level)
+        self.audio_worker.error_occurred.connect(self._on_audio_error)
+        self.audio_worker.start()
+        if self.chk_noise.isChecked() and not self.audio_worker.noise_suppression_available:
+            self.chk_noise.blockSignals(True)
+            self.chk_noise.setChecked(False)
+            self.chk_noise.blockSignals(False)
+            self.log_viewer.appendPlainText("[Audio] WebRTC noise suppression unavailable")
+
+    def _on_audio_device_changed(self):
+        if self.session_active:
+            return
+        self._start_audio_worker()
+
+    def _on_audio_error(self, message: str):
+        self.log_viewer.appendPlainText(f"[Audio Error] {message}")
+        self.lbl_status.setText("Ses aygıtı kullanılamıyor")
+
+    def _on_audio_level(self, raw_rms: float, clean_rms: float):
+        dbfs = 20.0 * np.log10(max(clean_rms, 1e-6))
+        level = int(np.clip((dbfs + 60.0) / 60.0 * 100.0, 0, 100))
+        self.mic_meter.setValue(level)
+        if raw_rms >= 0.8:
+            label, color = "Kırpılma", "#ff5252"
+        elif clean_rms >= 0.02:
+            label, color = "İyi", "#69f0ae"
+        elif clean_rms >= 0.005:
+            label, color = "Düşük", "#ffd740"
+        else:
+            label, color = "Sessiz", "#90a4ae"
+        self.lbl_noise.setText(label)
+        self.lbl_noise.setStyleSheet(f"color: {color}; font-weight: bold;")
 
     # ── Chat bubble rendering ─────────────────────────────────────────────────
 
@@ -321,9 +449,12 @@ class MainWindow(QMainWindow):
         bubble.setMaximumWidth(int(self.chat_scroll.width() * 0.75))
 
         if sender == "user":
-            bg_color = _SPEAKER_COLORS.get(speaker_id or 0, "#0d47a1")
-            sid = speaker_id or 0
-            text_meta = f"User (Speaker {sid}):"
+            bg_color = _SPEAKER_COLORS.get(speaker_id, "#0d47a1")
+            text_meta = (
+                "Ziyaretçi:"
+                if speaker_id is None
+                else f"Ziyaretçi (Konuşmacı {speaker_id + 1}):"
+            )
             bubble.setStyleSheet(
                 f"background-color: {bg_color}; color: white; "
                 f"border-radius: 12px; padding: 10px; font-size: 13px;"
@@ -368,59 +499,152 @@ class MainWindow(QMainWindow):
 
     # ── Recording trigger handlers ─────────────────────────────────────────────
 
+    def _start_session(self):
+        if self.session_active:
+            return
+        self.session_active = True
+        self.audio_worker.capture_enabled = True
+        self.lbl_status.setText("Hazır; konuşma düğmesine basın")
+        self._update_voice_controls()
+
+    def _new_visitor(self):
+        self.session_active = False
+        if self.audio_worker:
+            self.audio_worker.capture_enabled = False
+        self._on_interrupt()
+        self._clear_chat()
+        self.diarisation_timeline = []
+        if self.speaker_tracker is not None:
+            self.speaker_tracker.reset()
+        self._latest_debug = None
+        self._latest_profile = None
+        self._latest_focus = None
+        self._refresh_metrics()
+
+        previous_session = self.speech_session_id
+        self.speech_session_id = uuid.uuid4().hex
+        self.lbl_status.setText("Yeni ziyaretçi için oturum başlatın")
+        self._update_voice_controls()
+
+        self.reset_worker = SpeechResetWorker(
+            self.speech_server_url,
+            previous_session,
+            auth_token=self.args.auth_token,
+        )
+        self.reset_worker.completed.connect(self._on_session_reset)
+        self.reset_worker.start()
+
+    def _on_session_reset(self, success: bool, message: str):
+        prefix = "[Session]" if success else "[Session Error]"
+        self.log_viewer.appendPlainText(f"{prefix} {message}")
+
+    def _clear_chat(self):
+        while self.chat_layout.count():
+            item = self.chat_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+        self.chat_layout.addStretch()
+
+    def _update_voice_controls(self):
+        busy = self.active_worker is not None
+        available = self.session_active and not busy
+        self.chk_vad.setEnabled(available)
+        self.chk_noise.setEnabled(not busy)
+        self.btn_hold.setEnabled(available and not self.chk_vad.isChecked())
+        self.btn_start_session.setEnabled(not self.session_active and not busy)
+        self.input_device_combo.setEnabled(not self.session_active and not busy)
+        self.output_device_combo.setEnabled(not busy)
+
     def _on_vad_toggle(self, state):
         self.audio_worker.use_vad = self.chk_vad.isChecked()
-        self.btn_hold.setEnabled(not self.chk_vad.isChecked())
+        self.audio_worker.buffer = []
+        self.audio_worker.is_recording = False
+        self._update_voice_controls()
+
+    def _on_noise_toggle(self, state):
+        if self.audio_worker:
+            self.audio_worker.noise_suppression_enabled = self.chk_noise.isChecked()
 
     def _on_hold_pressed(self):
-        if not self.chk_vad.isChecked():
-            self.lbl_status.setText("Status: Recording...")
+        if self.session_active and not self.chk_vad.isChecked():
+            self.lbl_status.setText("Dinliyorum...")
             self.audio_worker.is_recording = True
             self.audio_worker.buffer = []
 
     def _on_hold_released(self):
         if not self.chk_vad.isChecked() and self.audio_worker.is_recording:
             self.audio_worker.is_recording = False
-            self.lbl_status.setText("Status: Processing voice...")
+            self.lbl_status.setText("Yanıt hazırlanıyor...")
             buf = self.audio_worker._buffer_drain()
             if buf:
                 self._on_audio_recorded(np.concatenate(buf))
 
     def _on_speech_started(self):
-        self.lbl_status.setText("Status: Listening...")
+        if self.session_active:
+            self.lbl_status.setText("Dinliyorum...")
 
     def _on_speech_stopped(self):
-        self.lbl_status.setText("Status: Processing voice...")
+        if self.session_active:
+            self.lbl_status.setText("Yanıt hazırlanıyor...")
 
     def _on_audio_recorded(self, audio_data):
-        self._on_interrupt()
+        if not self.session_active:
+            return
+        if self.active_worker and self.active_worker.isRunning():
+            self.log_viewer.appendPlainText("[Voice] Ignored overlapping turn")
+            return
+
+        self.audio_worker.capture_enabled = False
 
         self.active_worker = ResponseGeneratorWorker(
             audio_data,
             self.pipeline,
             self.speech_server_url,
             auth_token=self.args.auth_token,
+            session_id=self.speech_session_id,
+            diarization_enabled=self.diarization_enabled,
+            output_device=self.output_device_combo.currentData(),
+            speaker_tracker=self.speaker_tracker,
         )
-        self.active_worker.status_changed.connect(
-            lambda s: self.lbl_status.setText(f"Status: {s}")
-        )
+        self.active_worker.status_changed.connect(self._on_voice_status)
         self.active_worker.diarisation_ready.connect(self._on_diarisation_ready)
         self.active_worker.text_ready.connect(self._on_text_ready)
+        self.active_worker.finished.connect(self._on_response_finished)
+        self._update_voice_controls()
         self.active_worker.start()
+
+    def _on_voice_status(self, status: str):
+        translations = {
+            "Diarizing speech...": "Konuşmacı analiz ediliyor...",
+            "Generating response...": "Yanıt hazırlanıyor...",
+            "Speaking...": "Danışman konuşuyor...",
+            "Finalizing turn...": "Konuşma tamamlanıyor...",
+            "Idle": "Hazır",
+            "Auth Error (Idle)": "Kimlik doğrulama hatası",
+            "Server Error (Idle)": "Sunucu hatası",
+            "Idle (Connection Error)": "Bağlantı hatası",
+        }
+        self.lbl_status.setText(translations.get(status, status))
+
+    def _on_response_finished(self):
+        self.active_worker = None
+        if self.session_active:
+            self.audio_worker.capture_enabled = True
+            self.lbl_status.setText("Hazır")
+        self._update_voice_controls()
 
     def _on_diarisation_ready(self, turns):
         self.diarisation_timeline = turns
 
     def _on_text_ready(self, user_text, bot_text):
-        # Determine dominant speaker from diarisation list
-        speaker_id = 0
-        if self.diarisation_timeline:
-            longest_duration = 0
+        speaker_id = None
+        if self.diarization_enabled and self.diarisation_timeline:
+            durations = {}
             for turn in self.diarisation_timeline:
-                duration = turn["end"] - turn["start"]
-                if duration > longest_duration:
-                    longest_duration = duration
-                    speaker_id = turn["speaker_id"]
+                sid = turn["speaker_id"]
+                durations[sid] = durations.get(sid, 0.0) + turn["end"] - turn["start"]
+            speaker_id = max(durations, key=durations.get)
 
         if user_text:
             self._add_chat_bubble("user", user_text, speaker_id)
@@ -430,8 +654,7 @@ class MainWindow(QMainWindow):
     def _on_interrupt(self):
         if self.active_worker and self.active_worker.isRunning():
             self.active_worker.interrupt()
-            self.active_worker.wait(50)
-            self.lbl_status.setText("Status: Idle")
+            self.lbl_status.setText("Yanıt durduruluyor...")
 
     # ── Webcam and CV data callbacks ──────────────────────────────────────────
 
@@ -458,6 +681,11 @@ class MainWindow(QMainWindow):
     def _on_focus(self, data: dict) -> None:
         self._latest_focus = data
         self._refresh_metrics()
+
+    def _on_cv_error(self, message: str) -> None:
+        self.log_viewer.appendPlainText(f"[CV] {message}")
+        if "Camera index" in message:
+            self.video_label.setText("Kamera kullanılamıyor\nSesli danışman çalışmaya devam ediyor")
 
     def _refresh_metrics(self) -> None:
         self.metrics_view.setPlainText(
@@ -585,10 +813,18 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event) -> None:
         self._on_interrupt()
-        self.audio_worker.stop()
-        self.audio_worker.wait(2000)
-        self.worker.stop()
-        self.worker.wait(2000)
+        if self.active_worker and self.active_worker.isRunning():
+            self.active_worker.wait(5000)
+        if self.audio_worker:
+            self.audio_worker.stop()
+            self.audio_worker.wait(2000)
+        if self.worker:
+            self.worker.stop()
+            self.worker.wait(2000)
+        if self.loader and self.loader.isRunning():
+            self.loader.wait(5000)
+        if self.reset_worker and self.reset_worker.isRunning():
+            self.reset_worker.wait(2000)
         if hasattr(self, "cap") and self.cap:
             self.cap.release()
         event.accept()
@@ -597,6 +833,12 @@ class MainWindow(QMainWindow):
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 def parse_args():
+    def env_bool(name: str, default: bool) -> bool:
+        value = os.environ.get(name)
+        if value is None:
+            return default
+        return value.strip().lower() not in {"0", "false", "no", "off"}
+
     p = argparse.ArgumentParser(description="İTÜ AI Tercih Danışmanı - Desktop Client")
     p.add_argument("session_id", nargs="?", default="camera-test-1")
     p.add_argument("--camera-index", type=int, default=0)
@@ -605,6 +847,37 @@ def parse_args():
     p.add_argument("--speech-server", default="http://localhost:8002")
     p.add_argument("--auth-token", default=os.environ.get("ITU_AUTH_TOKEN"),
                    help="Bearer token for server authentication")
+    p.add_argument(
+        "--festival-mode",
+        action=argparse.BooleanOptionalAction,
+        default=env_bool("FESTIVAL_MODE", True),
+        help="Use push-to-talk and half-duplex capture for noisy public spaces",
+    )
+    p.add_argument(
+        "--diarization",
+        action=argparse.BooleanOptionalAction,
+        default=env_bool("ENABLE_DIARIZATION", True),
+        help="Load and run local DiariZen speaker diarization",
+    )
+    p.add_argument(
+        "--noise-suppression",
+        action=argparse.BooleanOptionalAction,
+        default=env_bool("AUDIO_NOISE_SUPPRESSION", True),
+        help="Apply WebRTC noise suppression before VAD and GPT",
+    )
+    p.add_argument(
+        "--ns-level",
+        type=int,
+        choices=range(4),
+        default=int(os.environ.get("AUDIO_NS_LEVEL", "2")),
+        help="WebRTC noise suppression level: 0-3",
+    )
+    p.add_argument(
+        "--speaker-threshold",
+        type=float,
+        default=float(os.environ.get("SPEAKER_MATCH_THRESHOLD", "0.35")),
+        help="Maximum cosine distance for matching a speaker across turns",
+    )
     return p.parse_args()
 
 

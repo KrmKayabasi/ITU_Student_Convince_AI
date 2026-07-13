@@ -4,7 +4,8 @@ import pytest
 from PyQt6.QtCore import QCoreApplication
 import sys
 
-from client.desktop_client import AudioCaptureWorker, PipelineLoaderWorker
+from client.desktop_client import AudioCaptureWorker, PipelineLoaderWorker, parse_args
+from client.workers import SpeakerTracker
 
 # Setup Qt application context for tests
 @pytest.fixture(scope="session", autouse=True)
@@ -44,3 +45,49 @@ def test_audio_capture_worker_properties():
     assert worker.is_active is True
     assert worker.is_recording is False
     assert len(worker.buffer) == 0
+
+
+def test_festival_and_diarization_flags(monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["desktop_client.py", "--no-diarization"])
+
+    args = parse_args()
+
+    assert args.festival_mode is True
+    assert args.diarization is False
+    assert args.noise_suppression is True
+
+
+def test_flag_defaults_can_come_from_environment(monkeypatch):
+    monkeypatch.setenv("FESTIVAL_MODE", "0")
+    monkeypatch.setenv("ENABLE_DIARIZATION", "0")
+    monkeypatch.setenv("AUDIO_NOISE_SUPPRESSION", "0")
+    monkeypatch.setattr(sys, "argv", ["desktop_client.py"])
+
+    args = parse_args()
+
+    assert args.festival_mode is False
+    assert args.diarization is False
+    assert args.noise_suppression is False
+
+
+def test_speaker_tracker_keeps_stable_ids_across_turns():
+    tracker = SpeakerTracker(threshold=0.2)
+
+    first = tracker.assign({"local-a": np.array([1.0, 0.0], dtype=np.float32)})
+    second = tracker.assign({"local-x": np.array([0.99, 0.01], dtype=np.float32)})
+
+    assert first["local-a"] == 0
+    assert second["local-x"] == 0
+
+
+def test_speaker_tracker_allocates_and_resets_different_speakers():
+    tracker = SpeakerTracker(threshold=0.2)
+
+    first = tracker.assign({"a": np.array([1.0, 0.0], dtype=np.float32)})
+    second = tracker.assign({"b": np.array([0.0, 1.0], dtype=np.float32)})
+    tracker.reset()
+    after_reset = tracker.assign({"b": np.array([0.0, 1.0], dtype=np.float32)})
+
+    assert first["a"] == 0
+    assert second["b"] == 1
+    assert after_reset["b"] == 0

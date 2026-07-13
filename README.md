@@ -23,13 +23,13 @@ uv sync --python 3.12
 # 2. Start the speech server (terminal 1)
 export OPENAI_API_KEY=sk-...
 podman build -f backend/speech_backend/Dockerfile.server -t itu-speech-realtime backend/speech_backend
-podman run --rm -p 8002:8002 -e OPENAI_API_KEY --name itu-speech-server itu-speech-realtime
+podman run --rm -p 8002:8002 --env-file .env --name itu-speech-server itu-speech-realtime
 
 # 3. Start the desktop app (terminal 2)
 uv run python client/desktop_client.py
 ```
 
-A dark-themed window opens. Click **"Start CV Pipeline"**, then start talking. The AI responds in Turkish with a natural voice.
+A dark-themed window opens. Click **"Oturumu Başlat"**, then hold **"Hold to Talk"** while speaking. Festival Mode pauses microphone turn detection while GPT is responding, preventing the assistant from hearing itself.
 
 The speech server is lightweight in the default OpenAI Realtime mode and does not need local CUDA, Whisper, Gemma, or TTS models. If you do not use Podman, see [Setup Guide](docs/SETUP.md) for the local Python command.
 
@@ -56,7 +56,7 @@ The speech server is lightweight in the default OpenAI Realtime mode and does no
 ### Speech Pipeline Flow
 
 ```
-User speaks → Silero VAD detects boundaries → Audio sent via HTTP POST
+User speaks → WebRTC noise suppression/AGC → Silero VAD → Audio sent via HTTP POST
 → OpenAI Realtime (gpt-realtime-2.1) handles speech understanding, reasoning, and voice
 → PCM audio deltas stream back to the desktop client
 ```
@@ -73,11 +73,28 @@ The server keeps the same `/chat_stream`, `/last_turn`, `/reset`, and `/health` 
 
 ## Speaking to the AI
 
-**Default mode (hands-free):** Just start talking. The app detects when you start and stop speaking using Silero VAD. After you finish, the AI responds automatically.
+**Default Festival Mode:** Click **Oturumu Başlat**, then hold **Hold to Talk**. Capture pauses while the assistant responds so speaker echo cannot create another turn.
 
-**Manual mode:** Uncheck "Auto-Talk (VAD)" and use the **Hold to Talk** button.
+**Hands-free mode:** Start with `--no-festival-mode`, or enable **Auto-Talk (VAD)** after starting the session.
 
-**Interrupting the AI:** Click **"Interrupt Playout"** or just speak over it.
+**Interrupting the AI:** Click **Interrupt Playout**. Full-duplex voice interruption remains disabled until acoustic echo cancellation is added.
+
+**New visitor:** Click **Yeni Ziyaretçi** to clear the visible conversation and reset that visitor's OpenAI session.
+
+**Group conversation:** Do not press **Yeni Ziyaretçi** when several people are discussing the same topic. Pass push-to-talk between them. DiariZen matches anonymous voice embeddings across turns, keeps stable labels such as Konuşmacı 1 and Konuşmacı 2, and tells GPT which visitor produced each turn while preserving the shared conversation context.
+
+Useful comparison flags:
+
+```bash
+# Skip DiariZen model loading and per-turn inference
+uv run python client/desktop_client.py --no-diarization
+
+# Disable WebRTC preprocessing for an A/B comparison
+uv run python client/desktop_client.py --no-noise-suppression
+
+# Aggressive festival noise suppression (0-3)
+AUDIO_NS_LEVEL=3 uv run python client/desktop_client.py
+```
 
 **Multiple speakers:** Each person gets a color-coded bubble:
 - Speaker 0 → Blue

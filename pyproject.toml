@@ -21,6 +21,7 @@ dependencies = [
     "pyannote-audio",
     "pyqt6>=6.7.0,<7.0.0",
     "pyqt6-webengine>=6.7.0,<7.0.0",
+    "pywebrtc-audio==0.1.0",
     "pyyaml>=6.0.0",
     "scipy>=1.10.0",
     "sherpa-onnx>=1.10.0",

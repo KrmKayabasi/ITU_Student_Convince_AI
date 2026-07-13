@@ -38,3 +38,45 @@ def test_bridge_requires_openai_api_key():
             voice="marin",
             instructions="test",
         )
+
+
+@pytest.mark.asyncio
+async def test_speaker_id_is_added_to_response_instructions(monkeypatch):
+    bridge = OpenAIRealtimeBridge(
+        api_key="test-key",
+        model="gpt-realtime-2.1",
+        voice="marin",
+        instructions="Base instructions",
+    )
+    bridge._ws = object()
+    sent = []
+
+    async def fake_ensure_connected():
+        return None
+
+    async def fake_send_json(event):
+        sent.append(event)
+
+    async def fake_recv_json():
+        return {
+            "type": "response.done",
+            "response": {"status": "completed", "output": []},
+        }
+
+    monkeypatch.setattr(bridge, "_ensure_connected", fake_ensure_connected)
+    monkeypatch.setattr(bridge, "_send_json", fake_send_json)
+    monkeypatch.setattr(bridge, "_recv_json", fake_recv_json)
+
+    chunks = [
+        chunk
+        async for chunk in bridge.stream_turn(
+            np.ones(320, dtype=np.float32) * 0.1,
+            speaker_id=1,
+        )
+    ]
+
+    response_create = next(event for event in sent if event["type"] == "response.create")
+    instructions = response_create["response"]["instructions"]
+    assert chunks == []
+    assert "Base instructions" in instructions
+    assert "Visitor 2" in instructions

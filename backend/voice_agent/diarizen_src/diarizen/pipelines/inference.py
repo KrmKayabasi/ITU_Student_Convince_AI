@@ -10,8 +10,8 @@ from typing import Any, Dict, Optional
 
 import toml
 import numpy as np
+import soundfile as sf
 import torch
-import torchaudio
 
 from scipy.ndimage import median_filter
 
@@ -118,14 +118,14 @@ class DiariZenPipeline(SpeakerDiarizationPipeline):
             rttm_out_dir=rttm_out_dir
         )
 
-    def __call__(self, in_wav, sess_name=None):
+    def __call__(self, in_wav, sess_name=None, return_embeddings=False):
         assert isinstance(in_wav, (str, BytesIO, ProtocolFile)), \
             f"input must be either a str, BytesIO or a ProtocolFile; there was {type(in_wav)}"
         in_wav = in_wav if not isinstance(in_wav, ProtocolFile) else in_wav['audio']
 
         print('Extracting segmentations.')
-        waveform, sample_rate = torchaudio.load(in_wav)
-        waveform = torch.unsqueeze(waveform[0], 0)      # force to use the SDM data
+        audio, sample_rate = sf.read(in_wav, dtype="float32", always_2d=True)
+        waveform = torch.from_numpy(audio[:, 0]).unsqueeze(0)  # force to use the SDM data
         segmentations = self.get_segmentations({"waveform": waveform, "sample_rate": sample_rate}, soft=False)
 
         if self.apply_median_filtering:
@@ -183,6 +183,17 @@ class DiariZenPipeline(SpeakerDiarizationPipeline):
 
         # reconstruct discrete diarization from raw hard clusters
         hard_clusters[inactive_speakers] = -2
+        cluster_centroids = {}
+        for cluster_id in np.unique(hard_clusters):
+            if cluster_id < 0:
+                continue
+            cluster_embeddings = embeddings[hard_clusters == cluster_id]
+            cluster_embeddings = cluster_embeddings[
+                np.all(np.isfinite(cluster_embeddings), axis=1)
+            ]
+            if len(cluster_embeddings) > 0:
+                cluster_centroids[int(cluster_id)] = np.mean(cluster_embeddings, axis=0)
+
         if np.max(hard_clusters) < 0:
             from pyannote.core import Annotation
             result = Annotation()
@@ -192,7 +203,7 @@ class DiariZenPipeline(SpeakerDiarizationPipeline):
                 rttm_out = os.path.join(self.rttm_out_dir, sess_name + ".rttm")
                 with open(rttm_out, "w") as f:
                     f.write(result.to_rttm())
-            return result
+            return (result, {}) if return_embeddings else result
 
         discrete_diarization, _ = self.reconstruct(
             segmentations,
@@ -209,13 +220,18 @@ class DiariZenPipeline(SpeakerDiarizationPipeline):
         )
         result = to_annotation(discrete_diarization)
         result.uri = sess_name
+        speaker_embeddings = {
+            label: cluster_centroids[label]
+            for label in result.labels()
+            if label in cluster_centroids
+        }
 
         if self.rttm_out_dir is not None:
             assert sess_name is not None
             rttm_out = os.path.join(self.rttm_out_dir, sess_name + ".rttm")
             with open(rttm_out, "w") as f:
                 f.write(result.to_rttm())
-        return result
+        return (result, speaker_embeddings) if return_embeddings else result
 
 
 if __name__ == '__main__':

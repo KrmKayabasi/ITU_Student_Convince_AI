@@ -1,6 +1,7 @@
 # Integrated Speech-to-Speech Server
 
 import os
+import re
 
 # Monkey patch transformers to bypass PyTorch 2.6 requirements for vision causal masks
 try:
@@ -98,27 +99,47 @@ def _verify_auth(credentials: HTTPAuthorizationCredentials | None = Depends(_sec
 gemma = None
 tts = None
 asr = None
-realtime = None
+realtime_sessions = {}
+
+
+def _speech_session_id(request: Request) -> str:
+    session_id = request.headers.get("X-Session-ID", "default").strip()
+    if not re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", session_id):
+        raise HTTPException(status_code=400, detail="Invalid X-Session-ID")
+    return session_id
+
+
+def _new_realtime_bridge() -> OpenAIRealtimeBridge:
+    return OpenAIRealtimeBridge(
+        api_key=OPENAI_API_KEY,
+        model=OPENAI_REALTIME_MODEL,
+        voice=OPENAI_REALTIME_VOICE,
+        instructions=SYSTEM_INSTRUCTION,
+        transcription_model=OPENAI_REALTIME_TRANSCRIPTION_MODEL,
+        language=OPENAI_REALTIME_LANGUAGE,
+    )
+
+
+def _get_realtime_bridge(session_id: str) -> OpenAIRealtimeBridge:
+    bridge = realtime_sessions.get(session_id)
+    if bridge is None:
+        bridge = _new_realtime_bridge()
+        realtime_sessions[session_id] = bridge
+    return bridge
 
 @app.on_event("startup")
 def startup_event():
-    global gemma, tts, asr, realtime
+    global gemma, tts, asr
     print("=" * 60)
     print("STARTING SPEECH-TO-SPEECH SERVER")
     print(f"Provider: {SPEECH_PROVIDER}")
     print("=" * 60)
 
     if SPEECH_PROVIDER == "openai_realtime":
-        realtime = OpenAIRealtimeBridge(
-            api_key=OPENAI_API_KEY,
-            model=OPENAI_REALTIME_MODEL,
-            voice=OPENAI_REALTIME_VOICE,
-            instructions=SYSTEM_INSTRUCTION,
-            transcription_model=OPENAI_REALTIME_TRANSCRIPTION_MODEL,
-            language=OPENAI_REALTIME_LANGUAGE,
-        )
+        if not OPENAI_API_KEY:
+            raise RuntimeError("OPENAI_API_KEY is required")
         print(
-            f"[Server] OpenAI Realtime bridge ready "
+            f"[Server] OpenAI Realtime session manager ready "
             f"(model={OPENAI_REALTIME_MODEL}, voice={OPENAI_REALTIME_VOICE})",
             flush=True,
         )
@@ -168,17 +189,27 @@ def startup_event():
     
     print(f"[Server] All models loaded on {DEVICE} and ready!")
 
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    bridges = list(realtime_sessions.values())
+    realtime_sessions.clear()
+    for bridge in bridges:
+        await bridge.reset()
+
 # Conversation history state (sliding window of last 20 turns of text history)
 chat_history = []
 MAX_HISTORY_TURNS = 20
 
 @app.post("/reset")
-async def reset_conversation(_auth=Depends(_verify_auth)):
-    global chat_history, realtime
+async def reset_conversation(request: Request, _auth=Depends(_verify_auth)):
+    global chat_history
     if SPEECH_PROVIDER == "openai_realtime":
-        if realtime is not None:
-            await realtime.reset()
-        print("[Server] OpenAI Realtime conversation reset!", flush=True)
+        session_id = _speech_session_id(request)
+        bridge = realtime_sessions.pop(session_id, None)
+        if bridge is not None:
+            await bridge.reset()
+        print(f"[Server] Realtime session reset: {session_id}", flush=True)
         return {"status": "reset"}
 
     chat_history = []
@@ -186,12 +217,14 @@ async def reset_conversation(_auth=Depends(_verify_auth)):
     return {"status": "reset"}
 
 @app.get("/last_turn")
-def get_last_turn(_auth=Depends(_verify_auth)):
-    global chat_history, realtime
+def get_last_turn(request: Request, _auth=Depends(_verify_auth)):
+    global chat_history
     if SPEECH_PROVIDER == "openai_realtime":
-        if realtime is None:
+        session_id = _speech_session_id(request)
+        bridge = realtime_sessions.get(session_id)
+        if bridge is None:
             return {"user": "", "assistant": ""}
-        return realtime.get_last_turn()
+        return bridge.get_last_turn()
 
     if len(chat_history) >= 2:
         return {
@@ -208,7 +241,7 @@ async def chat_stream(request: Request, _auth=Depends(_verify_auth)):
     runs Gemma 4 (LLM) with conversation history,
     synthesizes audio (24kHz) using Piper VITS, and streams the raw float32 audio bytes back.
     """
-    global chat_history, asr, realtime
+    global chat_history, asr
 
     # 1. Read binary audio data
     audio_bytes = await request.body()
@@ -220,8 +253,11 @@ async def chat_stream(request: Request, _auth=Depends(_verify_auth)):
     print(f"\n[Server] Received user speech: {len(audio_data)} samples ({len(audio_data)/16000:.2f}s)")
 
     if SPEECH_PROVIDER == "openai_realtime":
-        if realtime is None:
-            raise HTTPException(status_code=503, detail="OpenAI Realtime provider is not initialized")
+        session_id = _speech_session_id(request)
+        realtime_bridge = _get_realtime_bridge(session_id)
+        speaker_id = request.headers.get("X-Speaker-ID")
+        if speaker_id is not None and not speaker_id.isdigit():
+            raise HTTPException(status_code=400, detail="Invalid X-Speaker-ID")
 
         rms = float(np.sqrt(np.mean(audio_data**2))) if len(audio_data) > 0 else 0.0
         if rms < 0.005:
@@ -229,18 +265,21 @@ async def chat_stream(request: Request, _auth=Depends(_verify_auth)):
             return StreamingResponse(
                 iter([b""]),
                 media_type="application/octet-stream",
-                headers={"X-Sample-Rate": str(realtime.sample_rate)},
+                headers={"X-Sample-Rate": str(realtime_bridge.sample_rate)},
             )
 
         try:
-            await realtime.ensure_ready()
+            await realtime_bridge.ensure_ready()
         except Exception as e:
             print(f"[Server Error] OpenAI Realtime connection failed: {e}", flush=True)
             raise HTTPException(status_code=502, detail="OpenAI Realtime connection failed") from e
 
         async def realtime_audio_generator():
             try:
-                async for chunk in realtime.stream_turn(audio_data):
+                async for chunk in realtime_bridge.stream_turn(
+                    audio_data,
+                    speaker_id=int(speaker_id) if speaker_id is not None else None,
+                ):
                     yield chunk
             except Exception as e:
                 print(f"[Server Error] OpenAI Realtime streaming failed: {e}", flush=True)
@@ -251,9 +290,10 @@ async def chat_stream(request: Request, _auth=Depends(_verify_auth)):
             realtime_audio_generator(),
             media_type="application/octet-stream",
             headers={
-                "X-Sample-Rate": str(realtime.sample_rate),
+                "X-Sample-Rate": str(realtime_bridge.sample_rate),
                 "X-Streaming": "true",
                 "X-Speech-Provider": "openai_realtime",
+                "X-Session-ID": session_id,
             },
         )
     
@@ -377,6 +417,7 @@ async def health():
         "auth_enabled": _AUTH_ENABLED,
         "provider": SPEECH_PROVIDER,
         "model": OPENAI_REALTIME_MODEL if SPEECH_PROVIDER == "openai_realtime" else MODEL_ID,
+        "active_sessions": len(realtime_sessions) if SPEECH_PROVIDER == "openai_realtime" else 1,
     }
 
 
