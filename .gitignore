@@ -2,6 +2,7 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .venv/
+.venv311/
 .venv-test
 .venv-camera
 .venv-prod-check

@@ -15,6 +15,7 @@ import queue
 import tempfile
 import threading
 import json
+import base64
 import time
 
 import numpy as np
@@ -229,12 +230,14 @@ class ResponseGeneratorWorker(QThread):
     text_ready = pyqtSignal(str, str)
 
     def __init__(self, audio_data, pipeline, cascaded_url="http://localhost:8002",
-                 auth_token=None):
+                 auth_token=None, session_id="default", profile=None):
         super().__init__()
         self.audio_data = audio_data
         self.pipeline = pipeline
         self.cascaded_url = cascaded_url
         self.auth_token = auth_token
+        self.session_id = session_id
+        self.profile = profile
         self.is_interrupted = False
 
     def interrupt(self):
@@ -317,10 +320,18 @@ class ResponseGeneratorWorker(QThread):
         try:
             # Stream playout chunk-by-chunk from speech server POST request
             headers = self._make_headers()
+            if self.profile:
+                # Server only injects this into the system prompt the first
+                # time it sees this session_id (i.e. once per student) — see
+                # server.py's /chat_stream. base64 keeps the header ASCII-safe.
+                headers["X-CV-Profile"] = base64.b64encode(
+                    json.dumps(self.profile).encode("utf-8")
+                ).decode("ascii")
             with httpx.Client(timeout=60.0) as client:
                 with client.stream(
                     "POST",
                     f"{self.cascaded_url}/chat_stream",
+                    params={"session_id": self.session_id},
                     content=self.audio_data.tobytes(),
                     headers=headers,
                 ) as response:
@@ -389,6 +400,7 @@ class ResponseGeneratorWorker(QThread):
                 with httpx.Client(timeout=5.0) as client:
                     txt_res = client.get(
                         f"{self.cascaded_url}/last_turn",
+                        params={"session_id": self.session_id},
                         headers=self._make_headers(),
                     )
                     if txt_res.status_code == 200:

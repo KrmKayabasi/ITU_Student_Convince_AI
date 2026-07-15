@@ -22,7 +22,11 @@ from __future__ import annotations
 
 import sys
 import os
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import argparse
+import threading
 import numpy as np
 import cv2
 import httpx
@@ -395,6 +399,8 @@ class MainWindow(QMainWindow):
             self.pipeline,
             self.speech_server_url,
             auth_token=self.args.auth_token,
+            session_id=self.args.session_id,
+            profile=self._latest_profile,
         )
         self.active_worker.status_changed.connect(
             lambda s: self.lbl_status.setText(f"Status: {s}")
@@ -449,6 +455,33 @@ class MainWindow(QMainWindow):
     def _on_profile(self, data: dict) -> None:
         self._latest_profile = data
         self._refresh_metrics()
+        self._reset_conversation_for_new_person()
+
+    def _reset_conversation_for_new_person(self) -> None:
+        """CV pipeline yeni bir kisi icin profil urettiginde (bkz. CV_pipeline
+        scoring.reset_for_new_person), bu kiosk'un konusma gecmisini sunucuda
+        sifirlar. Boylece bir sonraki /chat_stream cagrisi yeni bir sistem
+        promptu olusturur ve bu profili (X-CV-Profile) icine enjekte eder.
+        Ana Qt thread'ini bloklamamak icin arka plan thread'inde calisir."""
+        server_url = self.speech_server_url
+        session_id = self.args.session_id
+        auth_token = self.args.auth_token
+
+        def _do_reset():
+            try:
+                headers = {}
+                if auth_token:
+                    headers["Authorization"] = f"Bearer {auth_token}"
+                httpx.post(
+                    f"{server_url}/reset",
+                    params={"session_id": session_id},
+                    headers=headers,
+                    timeout=5.0,
+                )
+            except Exception as e:
+                print(f"[Reset Error] Failed to reset conversation for new person: {e}", flush=True)
+
+        threading.Thread(target=_do_reset, daemon=True).start()
 
     def _on_focus(self, data: dict) -> None:
         self._latest_focus = data

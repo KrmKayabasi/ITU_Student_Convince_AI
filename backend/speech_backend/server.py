@@ -26,8 +26,10 @@ except ImportError:
     pass
 import secrets
 import asyncio
+import base64
+import json
 import uvicorn
-from fastapi import FastAPI, Request, HTTPException, Depends
+from fastapi import FastAPI, Request, HTTPException, Depends, Header
 from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import numpy as np
@@ -102,36 +104,87 @@ def startup_event():
     
     print(f"[Server] All models loaded on {DEVICE} and ready!")
 
-# Conversation history state (sliding window of last 20 turns of text history)
-chat_history = []
+# Conversation history state, keyed by kiosk session_id (sliding window of
+# last 20 turns of text history per session). A kiosk's session_id is stable
+# across students; /reset is what draws the boundary between one student's
+# conversation and the next (see StreamWorker's profile_ready -> /reset call
+# on the client, which fires each time the CV pipeline detects a new person).
+chat_history: dict[str, list] = {}
 MAX_HISTORY_TURNS = 20
+DEFAULT_SESSION_ID = "default"
+
+
+def _format_cv_profile(profile: dict) -> str:
+    """CV pipeline'dan gelen tek seferlik zengin profili, LLM'in system
+    promptuna eklenecek kisa bir dogal dil ozetine cevirir. Skorlar
+    ogrenciye asla dogrudan aktarilmamali; yalnizca danismanin ton ve
+    yaklasimini yonlendirmek icin kullanilmali."""
+    scores = profile.get("scores", {})
+    emotion = profile.get("signals", {}).get("emotion", {}).get("dominant")
+
+    def _level(v: float) -> str:
+        if v >= 0.66:
+            return "yuksek"
+        if v >= 0.4:
+            return "orta"
+        return "dusuk"
+
+    parts = [
+        f"{name}={_level(value)}"
+        for name, value in (
+            ("dikkat", scores.get("attention")),
+            ("aciklik", scores.get("openness")),
+            ("enerji", scores.get("energy")),
+        )
+        if value is not None
+    ]
+    summary = ", ".join(parts) if parts else "yeterli veri yok"
+    emotion_part = f", baskin duygu={emotion}" if emotion else ""
+
+    return (
+        "[Otomatik CV analizi - SADECE dahili rehberlik icindir, ogrenciye "
+        "asla dogrudan aktarma veya bahsetme] Bu ogrencinin gozlemlenen "
+        f"katilim profili: {summary}{emotion_part}. Bu bilgiyi yalnizca "
+        "kendi ton ve yaklasimini ayarlamak icin kullan (ornegin dusuk "
+        "enerjide daha canlandirici, dusuk aciklikta daha guven verici ol)."
+    )
+
 
 @app.post("/reset")
-def reset_conversation(_auth=Depends(_verify_auth)):
+def reset_conversation(session_id: str | None = None, _auth=Depends(_verify_auth)):
     global chat_history
-    chat_history = []
-    print("[Server] Conversation history reset!", flush=True)
+    if session_id:
+        chat_history.pop(session_id, None)
+        print(f"[Server] Conversation history reset for session: {session_id}", flush=True)
+    else:
+        chat_history = {}
+        print("[Server] Conversation history reset for all sessions!", flush=True)
     return {"status": "reset"}
 
 @app.get("/last_turn")
-def get_last_turn(_auth=Depends(_verify_auth)):
-    global chat_history
-    if len(chat_history) >= 2:
+def get_last_turn(session_id: str = DEFAULT_SESSION_ID, _auth=Depends(_verify_auth)):
+    history = chat_history.get(session_id, [])
+    if len(history) >= 2:
         return {
-            "user": chat_history[-2]["content"],
-            "assistant": chat_history[-1]["content"]
+            "user": history[-2]["content"],
+            "assistant": history[-1]["content"]
         }
     return {"user": "", "assistant": ""}
 
 @app.post("/chat_stream")
-async def chat_stream(request: Request, _auth=Depends(_verify_auth)):
+async def chat_stream(
+    request: Request,
+    session_id: str = DEFAULT_SESSION_ID,
+    x_cv_profile: str | None = Header(default=None, alias="X-CV-Profile"),
+    _auth=Depends(_verify_auth),
+):
     """
     Receives raw PCM float32 16kHz mono audio from client,
     transcribes it on the fly using Whisper ASR on GPU,
     runs Gemma 4 (LLM) with conversation history,
     synthesizes audio (24kHz) using Piper VITS, and streams the raw float32 audio bytes back.
     """
-    global chat_history, asr
+    global asr
 
     # 1. Read binary audio data
     audio_bytes = await request.body()
@@ -155,30 +208,42 @@ async def chat_stream(request: Request, _auth=Depends(_verify_auth)):
         asr_latency = time.time() - start_asr
         print(f"[Server] User Speech Transcribed Natively: '{user_transcribed_text}' (took {asr_latency:.2f}s)")
     
-    # Initialize history if empty
-    if not chat_history:
-        chat_history = [{"role": "system", "content": SYSTEM_INSTRUCTION}]
-        
+    # Initialize history if this is the first turn of a new session (i.e. a
+    # new student — see /reset, called by the client each time the CV
+    # pipeline reports a freshly-calibrated person). This is also the ONLY
+    # point where the CV profile gets injected, so it happens exactly once
+    # per session.
+    if session_id not in chat_history:
+        session_messages = [{"role": "system", "content": SYSTEM_INSTRUCTION}]
+        if x_cv_profile:
+            try:
+                profile = json.loads(base64.b64decode(x_cv_profile))
+                session_messages.append({"role": "system", "content": _format_cv_profile(profile)})
+                print(f"[Server] Injected CV profile into session {session_id}", flush=True)
+            except Exception as e:
+                print(f"[Server] Failed to parse X-CV-Profile header: {e}", flush=True)
+        chat_history[session_id] = session_messages
+
+    history = chat_history[session_id]
+
     # Append the current user text turn
     user_content = user_transcribed_text if user_transcribed_text else "[Kullanıcı anlaşılmayan bir ses gönderdi]"
-    chat_history.append({"role": "user", "content": user_content})
-    
+    history.append({"role": "user", "content": user_content})
+
     # Enforce history limit (sliding window of last 20 turns of text history).
     # pop(1) shifts the list, so we must pop index 1 twice (not 1 then 2),
     # but ONLY when indices [1] and [2] are the user+assistant pair after
     # index 0 (system prompt).  Guard with an explicit check.
-    while len(chat_history) > 1 + 2 * MAX_HISTORY_TURNS:
+    while len(history) > 1 + 2 * MAX_HISTORY_TURNS:
         # Remove the oldest user+assistant pair (indices 1 and 2 after system prompt)
-        if len(chat_history) >= 3:
-            chat_history.pop(1)  # oldest user  (now index 1 is the old assistant)
-            chat_history.pop(1)  # oldest assistant (shifted into index 1)
+        if len(history) >= 3:
+            history.pop(1)  # oldest user  (now index 1 is the old assistant)
+            history.pop(1)  # oldest assistant (shifted into index 1)
         else:
             break
-        
+
     # 3. Generate full LLM response → synthesize in ONE pass → stream audio
     async def cascaded_audio_generator():
-        global chat_history
-
         print(f"[Server] Running LLM inference...", flush=True)
         llm_start = time.time()
 
@@ -188,7 +253,7 @@ async def chat_stream(request: Request, _auth=Depends(_verify_auth)):
             # complete text at once.  espeak-ng gets full sentence context
             # for natural Turkish prosody — no clause-boundary artifacts.
             full_response_parts = []
-            for clause in gemma.generate_response_stream(chat_history, []):
+            for clause in gemma.generate_response_stream(history, []):
                 clause = clause.strip()
                 if clause:
                     full_response_parts.append(clause)
@@ -201,8 +266,8 @@ async def chat_stream(request: Request, _auth=Depends(_verify_auth)):
             llm_elapsed = time.time() - llm_start
 
             if not response_text:
-                if chat_history and chat_history[-1]["role"] == "user":
-                    chat_history.pop()
+                if history and history[-1]["role"] == "user":
+                    history.pop()
                 return
 
             print(f"[Server] Full response ({llm_elapsed:.2f}s, {len(response_text)} chars): "
@@ -218,8 +283,8 @@ async def chat_stream(request: Request, _auth=Depends(_verify_auth)):
             tts_elapsed = time.time() - tts_start
 
             if tts_audio is None or len(tts_audio) == 0:
-                if chat_history and chat_history[-1]["role"] == "user":
-                    chat_history.pop()
+                if history and history[-1]["role"] == "user":
+                    history.pop()
                 return
 
             total_latency = time.time() - llm_start
@@ -232,14 +297,14 @@ async def chat_stream(request: Request, _auth=Depends(_verify_auth)):
                 yield tts_audio[i:i + 1024].tobytes()
 
             # ── Step D: Update chat history ────────────────────────────────
-            chat_history.append({"role": "assistant", "content": response_text})
+            history.append({"role": "assistant", "content": response_text})
 
         except Exception as e:
             print(f"[Server Error] Exception: {e}", flush=True)
             import traceback
             traceback.print_exc()
-            if chat_history and chat_history[-1]["role"] == "user":
-                chat_history.pop()
+            if history and history[-1]["role"] == "user":
+                history.pop()
 
     headers = {
         "X-Sample-Rate": str(tts.sample_rate),
