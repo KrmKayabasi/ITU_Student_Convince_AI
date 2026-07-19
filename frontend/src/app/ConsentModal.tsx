@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import SquareButton from "./SquareButton";
 import { GoogleAnalytics } from "@next/third-parties/google";
 
@@ -47,6 +48,7 @@ export function useConsentState(storageKey: string) {
 }
 
 export default function ConsentModal() {
+  const pathname = usePathname();
   const [showDetails, setShowDetails] = useState(false);
   const {
     consentGiven: cookieConsentGiven,
@@ -66,6 +68,12 @@ export default function ConsentModal() {
       setRecordingChecked(recordingConsentGiven === true);
     }
   }, [recordingConsentGiven, recordingConsentLoaded]);
+
+  // The İTÜ kiosk has its own consent copy on the attract screen; the Kyutai
+  // cookie banner must not appear there.
+  if (pathname?.startsWith("/kiosk")) {
+    return null;
+  }
 
   if (!cookieConsentLoaded) {
     return null; // Wait until consent state is loaded

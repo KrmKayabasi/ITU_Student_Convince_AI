@@ -1,0 +1,76 @@
+/* Kiosk design tokens + keyframes — scoped under .kiosk-theme so the
+   legacy Kyutai pages (globals.css :root palette) stay untouched. */
+
+.kiosk-theme {
+  --k-bg-0: #0a1120;
+  --k-bg-1: #0f1a30;
+  --k-bg-2: #152340;
+  --k-navy: #123064;
+  --k-navy-bright: #1d4a94;
+  --k-amber: #f2a93b;
+  --k-amber-soft: #f7c46a;
+  --k-coral: #ff7a59;
+  --k-ink: #f5f1e8;
+  --k-ink-dim: #94a3bd;
+  --k-ok: #3fd6a3;
+  --k-danger: #f36c5c;
+
+  --k-ring-speaking: var(--k-amber);
+  --k-ring-listening: #4fd8c8;
+  --k-ring-concerned: var(--k-coral);
+  --k-ring-idle: rgba(148, 163, 189, 0.35);
+
+  color-scheme: dark;
+  color: var(--k-ink);
+  background-color: var(--k-bg-0);
+}
+
+/* seekAttention burst — retriggered by remounting with key={nonce} */
+@keyframes k-pulse-ring {
+  0% {
+    transform: scale(0.82);
+    opacity: 0.85;
+  }
+  70% {
+    opacity: 0.25;
+  }
+  100% {
+    transform: scale(1.45);
+    opacity: 0;
+  }
+}
+
+/* attract-mode CTA shimmer */
+@keyframes k-attract-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 24px 2px rgba(242, 169, 59, 0.35);
+  }
+  50% {
+    box-shadow: 0 0 44px 10px rgba(242, 169, 59, 0.6);
+  }
+}
+
+/* gentle fade-up for subtitles */
+@keyframes k-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.k-pulse-ring {
+  animation: k-pulse-ring 1.15s ease-out 2;
+}
+
+.k-attract-glow {
+  animation: k-attract-glow 2.6s ease-in-out infinite;
+}
+
+.k-fade-up {
+  animation: k-fade-up 0.35s ease-out both;
+}
