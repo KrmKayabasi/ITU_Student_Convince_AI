@@ -2,118 +2,110 @@
 
 ## What is this?
 
-A real-time desktop assistant that helps İTÜ students prepare for advisor interviews. Point a webcam and microphone at them, and the app:
+A real-time **browser kiosk** that talks prospective students into choosing İTÜ. A student stands in front of a screen, and **"Elif"** — an animated AI advisor with a hand-crafted SVG face — holds a natural Turkish voice conversation with them:
 
-- 🎥 **Tracks their posture, eye contact, and facial expressions** using computer vision
-- 🎙️ **Listens to their speech** and transcribes it with Whisper
-- 🧠 **Responds naturally in Turkish** using Gemma 4 12B and a Turkish-native voice
-- 👥 **Identifies who is speaking** (even in multi-person rooms) via DiariZen speaker diarisation
+- 🗣️ **Real-time speech-to-speech** via Google **Gemini Live** (native audio, barge-in, affective dialog)
+- 🎥 **Reads body language** — posture, eye contact, emotion — via the CV pipeline (MediaPipe + ONNX)
+- 🧠 **CV feeds the conversation**: a one-time behavioral profile shapes Elif's opening line, and continuous focus tracking makes her *re-engage a distracted student* (face + voice together)
+- 👩 **Lip-synced talking face** — blinks, breathes, tilts her head while listening, and leans in to grab attention
 
-Built for İTÜ's Computer Engineering department. Runs on a Mac or Linux PC with a webcam and microphone.
+Built for İTÜ's Computer Engineering department promotion stands.
 
 ---
 
-## Quick Start
+## Quick Start (version1 — Docker)
+
+**Prerequisites:** Docker + Docker Compose, a webcam + mic, Chrome, and a **Google AI Studio API key** ([aistudio.google.com/apikey](https://aistudio.google.com/apikey)).
 
 ```bash
-# 1. Install dependencies (Python 3.12, uv required)
-./scripts/setup_all.sh
+# 1. One-time: download CV model files (MediaPipe + emotion ONNX)
+bash scripts/fetch_models.sh
 
-# 2. Start the speech server (terminal 1)
-./scripts/start_cascaded_speech_server.sh
+# 2. Put your Gemini key in .env (compose reads it automatically)
+echo "GOOGLE_API_KEY=your_key_here" > .env
 
-# 3. Start the desktop app (terminal 2)
-uv run python client/desktop_client.py
+# 3. Bring up the whole stack
+docker compose up --build
 ```
 
-A dark-themed window opens. Click **"Start CV Pipeline"**, then start talking. The AI responds in Turkish with a natural voice.
+Then open **http://localhost:8080/kiosk** in Chrome, allow camera + mic, and press **"Konuşmaya Başla"**.
 
-Speech server needs **Python 3.11** (XTTS v2 requirement). The start script automatically uses the correct Python environment. If you don't have it, see [Setup Guide](docs/SETUP.md).
+**Design preview without any backend:** http://localhost:8080/kiosk?demo=1 — switch Elif's expression states, trigger the attention-grab, and test lip-sync with fake speech audio. (Also works with just `cd frontend && corepack pnpm dev` → http://localhost:3000/kiosk?demo=1.)
 
----
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────┐
-│          PyQt6 Desktop Client                │
-│  Webcam → CV frames    Mic → Silero VAD      │
-│  client/desktop_client.py                    │
-└──────────┬─────────────────────┬─────────────┘
-           │ WebSocket           │ HTTP POST
-           ▼                     ▼
-┌──────────────────┐  ┌────────────────────────┐
-│ CV Pipeline      │  │ Speech Server (:8002)   │
-│ (Docker :8000)   │  │                        │
-│ MediaPipe + ONNX │  │ Whisper → Gemma 4 12B  │
-│ emotion @ 1 Hz   │  │ → Coqui XTTS v2 (TTS)  │
-└──────────────────┘  └────────────────────────┘
-```
-
-### Speech Pipeline Flow
-
-```
-User speaks → Silero VAD detects boundaries → Audio sent via HTTP POST
-→ Whisper transcribes (Turkish) → Gemma 4 12B generates response
-→ Full response synthesized in ONE PASS by XTTS v2 → Audio streamed back
-```
-
-**Why one pass?** The full LLM response is accumulated, then sent to TTS as a single text. This gives the voice model complete sentence context — natural Turkish prosody, no unnatural pauses between fragments.
-
-### Why XTTS v2?
-
-The default TTS engine is **Coqui XTTS v2**, a character-based model that processes Turkish text directly. No intermediate phonemization step (unlike Piper VITS + espeak-ng, which maps text → phonetic symbols → token IDs → audio and can mispronounce individual characters).
-
-| | Piper VITS + espeak-ng | XTTS v2 |
-|---|---|---|
-| Turkish characters (ğ,ş,ç,ö,ü,ı) | Needs correctly configured espeak data | **Native** |
-| Uppercase (İTÜ) | Spells letter-by-letter without preprocessing | **Auto-normalizes** |
-| Markdown (`*bold*`) | Reads `*` as "yıldız" | **Auto-strips** |
-| Syllable artifacts | Possible (3 conversion layers) | **None** (1 conversion layer) |
-
-To switch back to Piper or try other backends, set `TTS_MODEL_ID` before starting the server. See [Setup Guide](docs/SETUP.md) for details.
-
----
-
-## Speaking to the AI
-
-**Default mode (hands-free):** Just start talking. The app detects when you start and stop speaking using Silero VAD. After you finish, the AI responds automatically.
-
-**Manual mode:** Uncheck "Auto-Talk (VAD)" and use the **Hold to Talk** button.
-
-**Interrupting the AI:** Click **"Interrupt Playout"** or just speak over it.
-
-**Multiple speakers:** Each person gets a color-coded bubble:
-- Speaker 0 → Blue
-- Speaker 1 → Teal
-- Speaker 2 → Purple
-
----
-
-## Security
-
-Auth is **off by default** (development mode). To enable:
+### Local development (no Docker for orchestrator/frontend)
 
 ```bash
-# Speech server
-export SPEECH_SERVER_TOKEN=$(openssl rand -hex 32)
+# Terminal 1 — CV pipeline (Docker; needs ./models from step 1)
+docker compose up --build cv-pipeline                # :8000
 
-# Desktop client
-uv run python client/desktop_client.py --auth-token YOUR_TOKEN
+# Terminal 2 — orchestrator (Python 3.11)
+python3.11 -m venv .venv-orch && source .venv-orch/bin/activate
+pip install -r backend/orchestrator/requirements.txt
+export GOOGLE_API_KEY=your_key_here
+./scripts/start_orchestrator.sh                      # :8001
+
+# Terminal 3 — kiosk UI
+cd frontend && corepack pnpm install && corepack pnpm dev   # :3000/kiosk
 ```
 
-When enabled, all non-health endpoints require the token (constant-time comparison via `secrets.compare_digest`). `/health` remains open for monitoring.
+**Verify Gemini in isolation** (writes a Turkish greeting to `smoke_out.wav`):
+
+```bash
+GOOGLE_API_KEY=... python backend/orchestrator/smoke_gemini.py
+```
+
+---
+
+## Architecture (version1)
+
+```
+BROWSER KIOSK (Next.js, frontend/src/app/kiosk)     sessionId = crypto.randomUUID()
+  mic  ─AudioWorklet→ 16k PCM16 ──────────────┐
+  webcam ─JPEG ~10fps─────────────────────────┼──► CV PIPELINE (:8000)
+  Elif (SVG face + rAF rig) ◄─ lip-sync RMS   │      MediaPipe + ONNX emotion
+  playback ◄─ 24k PCM16 ──────────────────────┤      /profile (one-shot)
+  CV /focus,/profile ─► avatar reactions      │      /focus   (~2.5s)
+        │ WS /v1/realtime (binary PCM + JSON) │
+        ▼                                     │
+ORCHESTRATOR (:8001, backend/orchestrator)    │
+  GeminiLiveBridge ──► Gemini Live (native audio, v1alpha)
+  CvInjector ◄────────────────────────────────┘
+    • /profile → Turkish opening hint (send_client_content, once)
+    • /focus   → debounced re-engage steer + avatar seekAttention
+GATEWAY (nginx :8080)  /→frontend  /api→cv-pipeline  /orch→orchestrator
+```
+
+- **`GOOGLE_API_KEY` never reaches the browser** — only the orchestrator talks to Gemini.
+- Gemini's native VAD handles turn-taking and barge-in; sessions survive connection rotation via **session resumption** + context-window compression.
+- Full details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · [backend/orchestrator/README.md](backend/orchestrator/README.md) · UI spec: [docs/UI_DESIGN.md](docs/UI_DESIGN.md)
 
 ---
 
 ## Tests
 
 ```bash
-source .venv/bin/activate
-pytest tests/ -v    # 137 tests, ~5 seconds
+# CV pipeline + legacy suites (137 tests)
+pytest tests/ -v
+
+# Orchestrator (22 tests: audio helpers, opener hints, focus debounce, bridge events)
+env -u PYTHONPATH PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest tests/orchestrator -q
 ```
 
-Tests cover gaze, posture, face selection, scoring, session state, emotion worker, thread safety, and config.
+---
+
+## Configuration (key env vars)
+
+| Variable | Default | What it does |
+|----------|---------|-------------|
+| `GOOGLE_API_KEY` | — | **Required.** Google AI Studio key for Gemini Live |
+| `GEMINI_LIVE_MODEL` | `gemini-2.5-flash-native-audio-preview-12-2025` | Native-audio realtime model |
+| `GEMINI_VOICE` | `Aoede` | Prebuilt voice (female; override if Turkish quality disappoints) |
+| `FOCUS_LOSS_SECONDS` | `5` | Sustained focus loss before a re-engage nudge |
+| `NUDGE_COOLDOWN_SECONDS` | `20` | Minimum gap between nudges |
+| `PROFILE_WAIT_SECONDS` | `3` | Wait for the CV profile before a generic opener |
+| `CV_PIPELINE_TOKEN` / `ORCH_TOKEN` | (off) | Optional auth tokens |
+
+Full list: [backend/orchestrator/README.md](backend/orchestrator/README.md) and [backend/cv_pipeline/config.py](backend/cv_pipeline/config.py).
 
 ---
 
@@ -121,42 +113,39 @@ Tests cover gaze, posture, face selection, scoring, session state, emotion worke
 
 ```
 backend/
-├── cv_pipeline/          FastAPI CV server (MediaPipe, ONNX, session management)
+├── cv_pipeline/          FastAPI CV server (MediaPipe, ONNX, session state machine)
 │   └── detectors/        Face, pose, gaze, posture, emotion, person selection
-├── speech_backend/       FastAPI speech server (Whisper, Gemma 4, XTTS)
-│   └── training/         LoRA fine-tuning for Gemma 4 on Turkish speech
-└── voice_agent/          DiariZen speaker diarisation
+├── orchestrator/         Gemini Live bridge + CV→LLM injection (version1 voice stack)
+├── speech_backend/       LEGACY cascaded stack (Whisper→Gemma→XTTS) — offline fallback
+└── voice_agent/          DiariZen speaker diarisation (used by the legacy desktop client)
 
-client/
-├── desktop_client.py     PyQt6 MainWindow (~430 lines)
-├── workers.py            Background threads (audio, CV stream, response generation)
-└── metrics.py            Live CV metrics display formatting
-
-tests/                    137 pytest tests across all modules
-docs/                     Architecture, setup, sprint documentation
-scripts/                  Startup and setup scripts
+frontend/src/app/kiosk/   Kiosk UI: Elif SVG face + rAF rig, realtime/webcam/CV hooks, demo mode
+client/                   LEGACY PyQt6 desktop client — now an optional CV debug tool
+deploy/nginx.conf         Single-entry gateway (WS-aware)
+tests/                    137 CV/voice tests + 22 orchestrator tests
+docs/                     Architecture, UI design spec, setup, sprint history
 ```
 
 ---
 
-## Configuration
+## Legacy stack (pre-version1)
 
-All configurable via environment variables. Key ones:
+The original desktop pipeline (PyQt6 client + cascaded Whisper→Gemma 4→Coqui XTTS server on :8002) still exists and works as an **offline fallback** — no cloud API needed:
 
-| Variable | Default | What it does |
-|----------|---------|-------------|
-| `TTS_MODEL_ID` | `xtts` | TTS engine: `xtts`, Piper path, `supertonic`, `dummy` |
-| `SPEECH_SERVER_TOKEN` | (off) | Enables auth on speech server |
-| `GEMMA_MODEL_ID` | `google/gemma-4-e4b-it` | Which Gemma model to load |
-| `DEVICE` | auto | `mps` (Mac), `cuda`, or `cpu` |
+```bash
+./scripts/setup_all.sh                       # Python envs
+./scripts/start_cascaded_speech_server.sh    # speech server (:8002, Python 3.11)
+uv run python client/desktop_client.py       # PyQt6 desktop app
+```
 
-Full reference in [Setup Guide → Configuration](docs/SETUP.md#-configuration-reference).
+See [docs/SETUP.md](docs/SETUP.md) for its full configuration (TTS backends, `SPEECH_SERVER_TOKEN` auth, DiariZen speaker colors, etc.).
 
 ---
 
 ## Docs
 
-- **[Setup & Installation](docs/SETUP.md)** — Python environments, Docker, auth, all config options, troubleshooting
-- **[Architecture](docs/ARCHITECTURE.md)** — Component details, TTS comparison, thread safety, scoring model
-- **[Sprint Doc](docs/SPRINT.md)** — CV pipeline implementation history and methodology
-- **[System Prompt](SYSTEM_PROMPT.md)** — The LLM prompt that defines the İTÜ advisor persona
+- **[UI Design Spec](docs/UI_DESIGN.md)** — the "Elif" concept: art direction, layout, motion & face states
+- **[Architecture](docs/ARCHITECTURE.md)** — component details, contracts, thread safety, scoring model
+- **[Orchestrator](backend/orchestrator/README.md)** — Gemini Live bridge, CV injection, protocol, env vars
+- **[Setup & Installation](docs/SETUP.md)** — legacy-stack environments, Docker, troubleshooting
+- **[System Prompt](SYSTEM_PROMPT.md)** — the LLM persona: İTÜ advisor decision tree & knowledge base
