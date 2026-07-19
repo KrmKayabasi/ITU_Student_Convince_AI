@@ -4,6 +4,41 @@ This document provides a technical overview of the components, communication flo
 
 ---
 
+## 🆕 version1 — Web kiosk (Gemini Live + CV↔LLM + talking face)
+
+> The `version1` branch finalizes the product as a **browser kiosk**. It replaces the cascaded Whisper→Gemma→XTTS speech server with **Google Gemini Live** (native-audio, realtime), wires the CV pipeline into the conversation, and adds an animated talking face. The cascaded/`openai_realtime` speech backends remain behind `SPEECH_PROVIDER` as fallbacks; the PyQt client is demoted to an optional CV-debug tool.
+
+```
+BROWSER (Next.js, frontend/src/app/kiosk)         sessionId = crypto.randomUUID()
+  mic ─AudioWorklet(pcm16-capture)─16k PCM16─┐
+  webcam ─<canvas>.jpeg ~10fps──────────────┼─► CV /stream/{id}   (:8000, unchanged)
+  TalkingFace ◄ outputAnalyser RMS (lip-sync)│
+  playback worklet ◄ 24k PCM16 ──────────────┤
+  CV /focus,/profile ─► avatar reactions      │
+        │  WS /v1/realtime?session_id=id  (binary PCM + control JSON)
+        ▼
+ORCHESTRATOR (backend/orchestrator, FastAPI :8001)   per session_id
+  GeminiLiveBridge ─► Gemini Live (gemini-2.5-flash-native-audio, v1alpha:
+                       affective_dialog + proactive_audio)
+  CvInjector: /profile → inject_context(opener)   /focus → debounced steer + seekAttention
+CV PIPELINE (backend/cv_pipeline, :8000) — UNCHANGED (/profile one-shot, /focus ~2.5s)
+GATEWAY (nginx :8080) → /=frontend, /api=cv-pipeline, /orch=orchestrator (WS upgrade)
+```
+
+**One command:** `GOOGLE_API_KEY=... docker compose up --build` → kiosk at `http://localhost:8080/kiosk`.
+
+| Concern | version1 answer |
+|---------|-----------------|
+| LLM/voice | Gemini Live native audio (16k PCM16 in / 24k PCM16 out), native VAD + barge-in |
+| One-time profile | `CvInjector` formats a Turkish opener hint → `send_client_content` (once, informs greeting) |
+| Continuous focus | `CvInjector` debounces `is_focused==False` (≥`FOCUS_LOSS_SECONDS`, `NUDGE_COOLDOWN_SECONDS`) → `send_realtime_input(text=…)` + `{"type":"seekAttention"}` to the avatar |
+| Talking face | `TalkingFace` (Canvas-2D, amplitude-driven mouth + expressions) now; `RiveFace` (rigged `.riv`) as a drop-in upgrade |
+| API key | server-side only (orchestrator); the browser never sees it |
+
+Details: [`backend/orchestrator/README.md`](../backend/orchestrator/README.md).
+
+---
+
 ## 🏛️ Component Overview
 
 The system uses a **client-server architecture** separating lightweight native processing on the client device from heavy LLM/ASR compute on the remote server:

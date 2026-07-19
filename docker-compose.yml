@@ -1,12 +1,17 @@
-# Birlesik stack: goruntu isleme (cv-pipeline) + AIme_Girl (Unmute sesli AI) uctan uca dockerize edilmis.
+# Birlesik stack — İTÜ Convince AI kiosk (version1):
+#   cv-pipeline (görüntü işleme) + orchestrator (Gemini Live + CV enjeksiyonu)
+#   + frontend (Next.js kiosk UI) + gateway (nginx tek giriş).
 #
-# Tek komutla ayaga kaldirir:
-#   docker compose up --build
+# Tek komutla ayağa kaldırır (GOOGLE_API_KEY gerekli):
+#   GOOGLE_API_KEY=... docker compose up --build
+#   # veya proje kökünde bir .env dosyasına GOOGLE_API_KEY=... yaz.
+#
+# Kiosk: http://localhost:8080/kiosk
 #
 name: bbf-suite
 
 services:
-  # ── Goruntu isleme (FastAPI) ──────────────────────────────────────────────
+  # ── Görüntü işleme (FastAPI :8000) — değişmedi ────────────────────────────
   cv-pipeline:
     image: cv-pipeline:latest
     build:
@@ -14,4 +19,49 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8000:8000"
+    restart: unless-stopped
+
+  # ── Realtime orchestrator (Gemini Live + CV enjeksiyonu, :8001) ───────────
+  orchestrator:
+    image: itu-orchestrator:latest
+    build:
+      context: ./
+      dockerfile: backend/orchestrator/Dockerfile
+    environment:
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+      - GEMINI_LIVE_MODEL=${GEMINI_LIVE_MODEL:-gemini-2.5-flash-native-audio-preview-12-2025}
+      - GEMINI_API_VERSION=${GEMINI_API_VERSION:-v1alpha}
+      - GEMINI_VOICE=${GEMINI_VOICE:-Aoede}
+      # Orchestrator subscribes to the CV pipeline over the compose network.
+      - CV_PIPELINE_WS_URL=ws://cv-pipeline:8000
+      - FOCUS_LOSS_SECONDS=${FOCUS_LOSS_SECONDS:-5}
+      - NUDGE_COOLDOWN_SECONDS=${NUDGE_COOLDOWN_SECONDS:-20}
+    depends_on:
+      - cv-pipeline
+    ports:
+      - "8001:8001"
+    restart: unless-stopped
+
+  # ── Kiosk UI (Next.js standalone :3000) ───────────────────────────────────
+  frontend:
+    image: itu-frontend:latest
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    depends_on:
+      - orchestrator
+      - cv-pipeline
+    restart: unless-stopped
+
+  # ── Tek giriş (nginx) — WS upgrade + /api ve /orch yönlendirme ─────────────
+  gateway:
+    image: nginx:alpine
+    volumes:
+      - ./deploy/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "8080:80"
+    depends_on:
+      - frontend
+      - orchestrator
+      - cv-pipeline
     restart: unless-stopped
