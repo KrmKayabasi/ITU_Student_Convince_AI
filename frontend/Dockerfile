@@ -18,6 +18,10 @@ RUN corepack enable pnpm && pnpm i --frozen-lockfile
 FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
+# Reuse the pnpm binary corepack already downloaded in the deps stage so this
+# stage needs NO network access (a fresh corepack download here fails with
+# EAI_AGAIN when Docker's DNS is flaky).
+COPY --from=deps /root/.cache/node/corepack /root/.cache/node/corepack
 COPY . .
 
 # Next.js collects completely anonymous telemetry data about general usage.
