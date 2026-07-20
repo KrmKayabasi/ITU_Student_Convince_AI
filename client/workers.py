@@ -99,9 +99,9 @@ class AudioCaptureWorker(QThread):
         config = sherpa_onnx.VadModelConfig()
         config.silero_vad.model = vad_model_path
         config.sample_rate = self.sample_rate
-        config.silero_vad.threshold = 0.65  # Raised for noisy environments
-        config.silero_vad.min_silence_duration = 0.4
-        config.silero_vad.min_speech_duration = 0.4
+        config.silero_vad.threshold = 0.5
+        config.silero_vad.min_silence_duration = 0.8
+        config.silero_vad.min_speech_duration = 0.3
         self.vad = sherpa_onnx.VoiceActivityDetector(config, buffer_size_in_seconds=60)
 
     # ── Thread-safe property accessors for cross-thread state ─────────────────

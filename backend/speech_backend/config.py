@@ -79,10 +79,10 @@ else:
 SAMPLE_RATE = 16000  # Gemma 4 audio and TTS both work natively at 16kHz
 CHANNELS = 1         # Mono-channel audio is required
 
-# Voice Activity Detection (VAD) config — tuned for noisy / crowded environments
-ENERGY_THRESHOLD = 3.5          # Higher = reject low-energy background noise
-SILENCE_DURATION = 0.4          # Faster turn-ending for responsive conversation
-MIN_SPEECH_DURATION = 0.5       # Filter out short noise bursts (< 500ms)
+# Voice Activity Detection (VAD) config
+ENERGY_THRESHOLD = 2.5
+SILENCE_DURATION = 0.8
+MIN_SPEECH_DURATION = 0.3
 
 # Use manual Press-to-Talk instead of automatic VAD
 PUSH_TO_TALK = False
