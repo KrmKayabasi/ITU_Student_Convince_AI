@@ -45,10 +45,10 @@ GOOGLE_API_KEY=... python backend/orchestrator/smoke_gemini.py
 | Var | Default | Notes |
 |-----|---------|-------|
 | `GOOGLE_API_KEY` | — | **required** (AI Studio) |
-| `GEMINI_LIVE_MODEL` | `gemini-2.5-flash-native-audio-preview-12-2025` | native-audio model |
+| `GEMINI_LIVE_MODEL` | `gemini-3.1-flash-live-preview` | native-audio model |
 | `GEMINI_API_VERSION` | `v1alpha` | needed for affective + proactive |
 | `GEMINI_VOICE` | `Aoede` | verify Turkish quality; override if needed |
-| `GEMINI_AFFECTIVE_DIALOG` / `GEMINI_PROACTIVE_AUDIO` | `true` | v1alpha-only |
+| `GEMINI_AFFECTIVE_DIALOG` / `GEMINI_PROACTIVE_AUDIO` | `false` | v1alpha-only |
 | `CV_PIPELINE_WS_URL` | `ws://localhost:8000` | CV pipeline base |
 | `FOCUS_LOSS_SECONDS` | `5` | sustained `!is_focused` before a nudge |
 | `NUDGE_COOLDOWN_SECONDS` | `20` | min gap between nudges |

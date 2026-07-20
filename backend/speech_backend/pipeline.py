@@ -94,7 +94,7 @@ def main():
             # Silence check prevents Whisper from hallucinating Turkish text from
             # near-silent input (matching the guard in server.py).
             rms = float(np.sqrt(np.mean(audio_data**2))) if len(audio_data) > 0 else 0.0
-            if rms < 0.005:
+            if rms < 0.008:
                 print(f"[Pipeline] Silence detected (RMS={rms:.5f}). Bypassing ASR.", flush=True)
                 user_text = ""
             else:

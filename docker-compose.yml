@@ -29,8 +29,10 @@ services:
       dockerfile: backend/orchestrator/Dockerfile
     environment:
       - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
-      - GEMINI_LIVE_MODEL=${GEMINI_LIVE_MODEL:-gemini-2.5-flash-native-audio-preview-12-2025}
+      - GEMINI_LIVE_MODEL=${GEMINI_LIVE_MODEL:-gemini-3.1-flash-live-preview}
       - GEMINI_API_VERSION=${GEMINI_API_VERSION:-v1alpha}
+      - GEMINI_AFFECTIVE_DIALOG=${GEMINI_AFFECTIVE_DIALOG:-false}
+      - GEMINI_PROACTIVE_AUDIO=${GEMINI_PROACTIVE_AUDIO:-false}
       - GEMINI_VOICE=${GEMINI_VOICE:-Aoede}
       # Orchestrator subscribes to the CV pipeline over the compose network.
       - CV_PIPELINE_WS_URL=ws://cv-pipeline:8000

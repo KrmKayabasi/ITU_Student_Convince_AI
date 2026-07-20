@@ -24,7 +24,7 @@ cd "$PROJECT_ROOT/backend/orchestrator"
 PYTHON="${ORCH_PYTHON:-python3}"
 
 echo "=== İTÜ Convince AI — Realtime Orchestrator ==="
-echo "Model:       ${GEMINI_LIVE_MODEL:-gemini-2.5-flash-native-audio-preview-12-2025}"
+echo "Model:       ${GEMINI_LIVE_MODEL:-gemini-3.1-flash-live-preview}"
 echo "API version: ${GEMINI_API_VERSION:-v1alpha}"
 echo "CV pipeline: ${CV_PIPELINE_WS_URL:-ws://localhost:8000}"
 echo "Port:        ${ORCH_PORT:-8001}"

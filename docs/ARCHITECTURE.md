@@ -18,7 +18,7 @@ BROWSER (Next.js, frontend/src/app/kiosk)         sessionId = crypto.randomUUID(
         │  WS /v1/realtime?session_id=id  (binary PCM + control JSON)
         ▼
 ORCHESTRATOR (backend/orchestrator, FastAPI :8001)   per session_id
-  GeminiLiveBridge ─► Gemini Live (gemini-2.5-flash-native-audio, v1alpha:
+  GeminiLiveBridge ─► Gemini Live (gemini-3.1-flash-live-preview, v1alpha:
                        affective_dialog + proactive_audio)
   CvInjector: /profile → inject_context(opener)   /focus → debounced steer + seekAttention
 CV PIPELINE (backend/cv_pipeline, :8000) — UNCHANGED (/profile one-shot, /focus ~2.5s)

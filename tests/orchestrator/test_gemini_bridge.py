@@ -10,7 +10,7 @@ import gemini_live_bridge as glb
 def _bridge():
     return glb.GeminiLiveBridge(
         api_key="dummy",
-        model="gemini-2.5-flash-native-audio-preview-12-2025",
+        model="gemini-3.1-flash-live-preview",
         voice="Aoede",
         instructions="Türkçe konuş.",
     )

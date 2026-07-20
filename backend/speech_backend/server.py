@@ -144,8 +144,8 @@ async def chat_stream(request: Request, _auth=Depends(_verify_auth)):
     
     # 2. Run Whisper STT with energy check to prevent silence hallucinations
     rms = np.sqrt(np.mean(audio_data**2)) if len(audio_data) > 0 else 0
-    if rms < 0.005:
-        print(f"[Server] Silence detected (RMS={rms:.5f} < 0.005). Bypassing Whisper ASR.", flush=True)
+    if rms < 0.008:
+        print(f"[Server] Silence detected (RMS={rms:.5f} < 0.008). Bypassing Whisper ASR.", flush=True)
         user_transcribed_text = ""
     else:
         print(f"[Server] Running Whisper ASR (RMS={rms:.5f})...", flush=True)

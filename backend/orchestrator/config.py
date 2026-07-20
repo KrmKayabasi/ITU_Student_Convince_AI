@@ -42,15 +42,15 @@ def _bool(name: str, default: bool) -> bool:
 # ── Gemini Live ───────────────────────────────────────────────────────────────
 GOOGLE_API_KEY = _str("GOOGLE_API_KEY", "")
 # Native-audio model (supports affective dialog + proactive audio under v1alpha).
-GEMINI_LIVE_MODEL = _str("GEMINI_LIVE_MODEL", "gemini-2.5-flash-native-audio-preview-12-2025")
+GEMINI_LIVE_MODEL = _str("GEMINI_LIVE_MODEL", "gemini-3.1-flash-live-preview")
 # affective_dialog + proactive_audio require the v1alpha API surface.
 GEMINI_API_VERSION = _str("GEMINI_API_VERSION", "v1alpha")
 # Prebuilt voice name. Turkish availability is verified at startup (Phase 1);
 # override via env if the chosen voice is unavailable.
 GEMINI_VOICE = _str("GEMINI_VOICE", "Aoede")
 GEMINI_LANGUAGE = _str("GEMINI_LANGUAGE", "tr-TR")
-ENABLE_AFFECTIVE_DIALOG = _bool("GEMINI_AFFECTIVE_DIALOG", True)
-ENABLE_PROACTIVE_AUDIO = _bool("GEMINI_PROACTIVE_AUDIO", True)
+ENABLE_AFFECTIVE_DIALOG = _bool("GEMINI_AFFECTIVE_DIALOG", False)
+ENABLE_PROACTIVE_AUDIO = _bool("GEMINI_PROACTIVE_AUDIO", False)
 
 # Audio rates (Gemini Live contract): 16 kHz PCM16 in, 24 kHz PCM16 out.
 INPUT_SAMPLE_RATE = _int("ORCH_INPUT_SAMPLE_RATE", 16000)

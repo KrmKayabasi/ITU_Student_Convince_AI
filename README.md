@@ -98,7 +98,7 @@ env -u PYTHONPATH PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest tests/orchestrator -q
 | Variable | Default | What it does |
 |----------|---------|-------------|
 | `GOOGLE_API_KEY` | — | **Required.** Google AI Studio key for Gemini Live |
-| `GEMINI_LIVE_MODEL` | `gemini-2.5-flash-native-audio-preview-12-2025` | Native-audio realtime model |
+| `GEMINI_LIVE_MODEL` | `gemini-3.1-flash-live-preview` | Native-audio realtime model |
 | `GEMINI_VOICE` | `Aoede` | Prebuilt voice (female; override if Turkish quality disappoints) |
 | `FOCUS_LOSS_SECONDS` | `5` | Sustained focus loss before a re-engage nudge |
 | `NUDGE_COOLDOWN_SECONDS` | `20` | Minimum gap between nudges |

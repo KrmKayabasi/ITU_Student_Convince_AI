@@ -49,7 +49,7 @@ class AudioHandler:
         config = sherpa_onnx.VadModelConfig()
         config.silero_vad.model = model_path
         config.sample_rate = self.sample_rate
-        config.silero_vad.threshold = 0.5
+        config.silero_vad.threshold = 0.65  # Raised for noisy environments
         config.silero_vad.min_silence_duration = self.silence_duration
         config.silero_vad.min_speech_duration = self.min_speech_duration
         
@@ -60,7 +60,7 @@ class AudioHandler:
         config_playback = sherpa_onnx.VadModelConfig()
         config_playback.silero_vad.model = model_path
         config_playback.sample_rate = self.sample_rate
-        config_playback.silero_vad.threshold = 0.70
+        config_playback.silero_vad.threshold = 0.85  # Raised for noisy environments
         config_playback.silero_vad.min_silence_duration = self.silence_duration
         config_playback.silero_vad.min_speech_duration = self.min_speech_duration
         self.vad_playback = sherpa_onnx.VoiceActivityDetector(config_playback, buffer_size_in_seconds=60)
@@ -118,7 +118,7 @@ class AudioHandler:
         Prevents voice onset clipping by maintaining a 400ms pre-roll buffer.
         """
         from collections import deque
-        pre_roll = deque(maxlen=20)  # 20 frames * 20ms = 400ms pre-roll buffer
+        pre_roll = deque(maxlen=25)  # 25 frames * 20ms = 500ms pre-roll buffer (wider for noisy envs)
         
         self.vad.reset()
         while not self.audio_queue.empty():
@@ -391,7 +391,7 @@ class AudioHandler:
                         # Acoustic Envelope Gate: Only evaluate VAD if mic energy exceeds
                         # the expected echo ceiling of the speaker in the last 400ms.
                         expected_echo_ceiling = alpha * max_far_energy
-                        gate_open = rms_clean > (expected_echo_ceiling + 0.006)
+                        gate_open = rms_clean > (expected_echo_ceiling + 0.015)  # Tighter gate for noisy envs
 
                         if gate_open:
                             self.vad_playback.accept_waveform(samples)
@@ -402,8 +402,8 @@ class AudioHandler:
                         else:
                             consecutive_speech_frames = 0
 
-                    # Require 4 consecutive active frames (~128ms) to confirm user speech
-                    if consecutive_speech_frames >= 4:
+                    # Require 6 consecutive active frames (~192ms) to confirm user speech in noisy environments
+                    if consecutive_speech_frames >= 6:
                         print("\n[VAD] Söz kesme doğrulandı! Asistan susturuluyor...", flush=True)
                         mute_playback = True
                         interrupted = True
