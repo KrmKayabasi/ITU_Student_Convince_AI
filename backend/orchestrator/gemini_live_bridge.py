@@ -63,6 +63,9 @@ class GeminiLiveBridge:
         self._cm: Any = None            # the live.connect() async context manager
         self._session: Any = None
         self._lock = asyncio.Lock()
+        # The SDK ultimately writes every uplink message to one WebSocket.
+        # Serialize audio, context, and tool responses to preserve frame order.
+        self._send_lock = asyncio.Lock()
         self._closed = False
         # Session resumption: Gemini live sessions have hard duration limits;
         # the server sends periodic resumption handles (and a GoAway shortly
@@ -115,6 +118,40 @@ class GeminiLiveBridge:
             session_resumption=types.SessionResumptionConfig(
                 handle=self._resumption_handle,
             ),
+            tools=[
+                types.Tool(
+                    function_declarations=[
+                        types.FunctionDeclaration(
+                            name="search_itu_professors",
+                            description=(
+                                "Search official İTÜ Akademi pages for faculty "
+                                "whose research matches a student's topic. Use a "
+                                "short Turkish research keyword or phrase."
+                            ),
+                            parameters_json_schema={
+                                "type": "object",
+                                "properties": {
+                                    "topic": {
+                                        "type": "string",
+                                        "description": (
+                                            "Research topic, preferably the concise "
+                                            "Turkish term used by İTÜ Akademi"
+                                        ),
+                                    },
+                                    "department": {
+                                        "type": "string",
+                                        "description": (
+                                            "Optional İTÜ faculty or department filter"
+                                        ),
+                                    },
+                                },
+                                "required": ["topic"],
+                            },
+                            behavior=types.Behavior.NON_BLOCKING,
+                        )
+                    ]
+                )
+            ],
         )
         # v1alpha-only knobs — guarded so a stricter SDK/model still connects.
         if self.enable_affective_dialog:
@@ -196,12 +233,15 @@ class GeminiLiveBridge:
             return
         from google.genai import types
 
-        await self._session.send_realtime_input(
-            audio=types.Blob(
-                data=pcm16,
-                mime_type=f"audio/pcm;rate={self.input_sample_rate}",
+        async with self._send_lock:
+            if self._session is None:
+                return
+            await self._session.send_realtime_input(
+                audio=types.Blob(
+                    data=pcm16,
+                    mime_type=f"audio/pcm;rate={self.input_sample_rate}",
+                )
             )
-        )
 
     async def steer(self, text: str) -> None:
         """Inject a mid-session text nudge that steers the live audio stream.
@@ -211,7 +251,9 @@ class GeminiLiveBridge:
         """
         if self._session is None or not text:
             return
-        await self._session.send_realtime_input(text=text)
+        async with self._send_lock:
+            if self._session is not None:
+                await self._session.send_realtime_input(text=text)
 
     async def inject_context(self, text: str, *, turn_complete: bool = False) -> None:
         """Seed one-shot conversational context (the CV profile opener).
@@ -224,10 +266,32 @@ class GeminiLiveBridge:
             return
         from google.genai import types
 
-        await self._session.send_client_content(
-            turns=types.Content(role="user", parts=[types.Part(text=text)]),
-            turn_complete=turn_complete,
+        async with self._send_lock:
+            if self._session is not None:
+                await self._session.send_client_content(
+                    turns=types.Content(role="user", parts=[types.Part(text=text)]),
+                    turn_complete=turn_complete,
+                )
+
+    async def send_tool_response(
+        self, *, call_id: str, name: str, response: dict[str, Any]
+    ) -> None:
+        """Return a non-blocking tool result once the current audio turn is idle."""
+        if self._session is None:
+            return
+        from google.genai import types
+
+        function_response = types.FunctionResponse(
+            id=call_id,
+            name=name,
+            response=response,
+            scheduling=types.FunctionResponseScheduling.WHEN_IDLE,
         )
+        async with self._send_lock:
+            if self._session is not None:
+                await self._session.send_tool_response(
+                    function_responses=function_response
+                )
 
     # ── downlink (Gemini -> browser) ──────────────────────────────────────────
     async def receive(self) -> AsyncIterator[dict[str, Any]]:
@@ -245,6 +309,8 @@ class GeminiLiveBridge:
           {"type": "output_transcript", "text": str}   # what the model said
           {"type": "interrupted"}                       # barge-in
           {"type": "turn_complete"}                     # model finished a turn
+          {"type": "tool_call", "calls": [...]}        # non-blocking tools
+          {"type": "tool_cancel", "ids": [...]}        # cancel in-flight tools
         """
         if self._session is None:
             raise RuntimeError("Gemini Live session is not connected")
@@ -278,7 +344,30 @@ class GeminiLiveBridge:
         go_away = getattr(response, "go_away", None)
         if go_away is not None:
             logger.info("GoAway received (time_left=%s); will resume on drop",
-                        getattr(go_away, "time_left", "?"))
+                         getattr(go_away, "time_left", "?"))
+
+        tool_call = getattr(response, "tool_call", None)
+        calls: list[dict[str, Any]] = []
+        for call in getattr(tool_call, "function_calls", None) or []:
+            call_id = getattr(call, "id", None)
+            name = getattr(call, "name", None)
+            if not call_id or not name:
+                continue
+            args = getattr(call, "args", None)
+            calls.append(
+                {
+                    "id": str(call_id),
+                    "name": str(name),
+                    "args": dict(args) if args is not None else {},
+                }
+            )
+        if calls:
+            events.append({"type": "tool_call", "calls": calls})
+
+        cancellation = getattr(response, "tool_call_cancellation", None)
+        ids = [str(call_id) for call_id in getattr(cancellation, "ids", None) or []]
+        if ids:
+            events.append({"type": "tool_cancel", "ids": ids})
 
         sc = getattr(response, "server_content", None)
 

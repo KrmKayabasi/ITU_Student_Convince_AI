@@ -56,6 +56,10 @@ ENABLE_PROACTIVE_AUDIO = _bool("GEMINI_PROACTIVE_AUDIO", False)
 INPUT_SAMPLE_RATE = _int("ORCH_INPUT_SAMPLE_RATE", 16000)
 OUTPUT_SAMPLE_RATE = _int("ORCH_OUTPUT_SAMPLE_RATE", 24000)
 
+# Official İTÜ Akademi professor search.
+PROFESSOR_SEARCH_TIMEOUT_S = _float("PROFESSOR_SEARCH_TIMEOUT_S", 8.0)
+PROFESSOR_SEARCH_MAX_RESULTS = _int("PROFESSOR_SEARCH_MAX_RESULTS", 5)
+
 
 # ── CV pipeline (unchanged, :8000) ────────────────────────────────────────────
 # Base WS URL of the CV pipeline the orchestrator subscribes to server-side.

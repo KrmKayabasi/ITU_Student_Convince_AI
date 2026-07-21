@@ -33,6 +33,7 @@ import { AttractOverlay } from "./AttractOverlay";
 import { SessionControls } from "./SessionControls";
 import { WebcamPreview } from "./WebcamPreview";
 import { DemoPanel } from "./DemoPanel";
+import { ProfessorSearchPanel } from "./ProfessorSearchPanel";
 
 function newSessionId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -100,6 +101,7 @@ function ProductionKiosk({ avatarMode }: { avatarMode: AvatarMode }) {
         userText={session.userText}
         history={session.history}
       />
+      <ProfessorSearchPanel search={session.professorSearch} />
       {!started && <AttractOverlay onStart={start} />}
       <SessionControls
         started={started}

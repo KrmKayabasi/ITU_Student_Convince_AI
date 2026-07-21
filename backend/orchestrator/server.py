@@ -8,10 +8,11 @@ Transport (browser <-> orchestrator), one held-open WebSocket per visitor:
     - text frame    = JSON control: {"type": "interrupt" | "session.stop"}
   Downlink (here -> browser):
     - binary frame  = raw PCM16 mono 24 kHz  (model audio)
-    - text frame    = JSON: {"type":"ready","sample_rate":24000}
-                            {"type":"transcript","role":"user|assistant","text":...}
-                            {"type":"assistant_audio_start"}
-                            {"type":"interrupt"}            (barge-in; flush playback)
+     - text frame    = JSON: {"type":"ready","sample_rate":24000}
+                             {"type":"transcript","role":"user|assistant","text":...}
+                             {"type":"assistant_audio_start"}
+                             {"type":"tool_activity",...} / {"type":"tool_result",...}
+                             {"type":"interrupt"}            (barge-in; flush playback)
                             {"type":"seekAttention"}        (avatar attention-grab)
                             {"type":"turn_complete"} / {"type":"error","message":...}
 
@@ -35,6 +36,8 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 import config  # noqa: E402
 from gemini_live_bridge import GeminiLiveBridge  # noqa: E402
+from professor_search import ItuProfessorSearch  # noqa: E402
+from tool_coordinator import ToolCoordinator  # noqa: E402
 
 try:
     from cv_injector import CvInjector  # noqa: E402
@@ -85,6 +88,14 @@ class SessionRunner:
             enable_proactive_audio=config.ENABLE_PROACTIVE_AUDIO,
         )
         self.injector = None
+        self.tools = ToolCoordinator(
+            bridge=self.bridge,
+            send_json=self.send_json,
+            professor_search=ItuProfessorSearch(
+                timeout_s=config.PROFESSOR_SEARCH_TIMEOUT_S,
+                max_results=config.PROFESSOR_SEARCH_MAX_RESULTS,
+            ),
+        )
         # ── avatar emotion state (per-session) ─────────────────────────────────
         # Shared classifier instance (lazy-loaded on first transcript).
         self._loop = asyncio.get_event_loop()
@@ -93,6 +104,7 @@ class SessionRunner:
         self._emotion_last_emit = 0.0    # monotonic time of last emitted emotion
         self._emotion_last_label = "neutral"
         self._emotion_task: asyncio.Task | None = None
+        self._emotion_started = False
         self._assistant_audio_started = False
 
     # ── outbound helpers (only the sender task touches the socket) ────────────
@@ -162,6 +174,11 @@ class SessionRunner:
                 self._assistant_audio_started = False
                 self._reset_emotion("neutral")
                 await self.send_json({"type": "turn_complete"})
+            elif et == "tool_call":
+                for call in ev["calls"]:
+                    self.tools.start(call)
+            elif et == "tool_cancel":
+                await self.tools.cancel(ev["ids"])
 
     # ── avatar emotion helpers ─────────────────────────────────────────────────
     def _maybe_classify_emotion(self, chunk: str) -> None:
@@ -265,6 +282,7 @@ class SessionRunner:
             await self.close()
 
     async def close(self) -> None:
+        await self.tools.close()
         if self.injector is not None:
             await self.injector.close()
         await self.bridge.aclose()

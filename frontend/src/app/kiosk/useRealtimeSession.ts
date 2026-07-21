@@ -10,6 +10,26 @@ export interface TranscriptLine {
   text: string;
 }
 
+export interface ProfessorResult {
+  name: string;
+  title: string;
+  department: string;
+  work_areas: string;
+  summary: string;
+  profile_url: string;
+  image_url: string;
+}
+
+export interface ProfessorSearchState {
+  id: string;
+  query: string;
+  status: "searching" | "completed" | "cancelled" | "error";
+  message?: string;
+  results: ProfessorResult[];
+  sourceName?: string;
+  sourceUrl?: string;
+}
+
 export interface RealtimeSession {
   status: SessionStatus;
   errorMessage: string | null;
@@ -22,6 +42,7 @@ export interface RealtimeSession {
   /** Latest emotion label from the orchestrator (go_emotions, e.g. "joy").
    *  "neutral" when emotion classification is disabled or on turn reset. */
   emotion: string;
+  professorSearch: ProfessorSearchState | null;
   /** AnalyserNode on the assistant audio output — drives lip-sync. */
   outputAnalyserRef: React.MutableRefObject<AnalyserNode | null>;
   connect: (sessionId: string) => Promise<void>;
@@ -146,6 +167,8 @@ export function useRealtimeSession(): RealtimeSession {
   const [assistantSpeaking, setAssistantSpeaking] = useState(false);
   const [seekAttentionNonce, setSeekAttentionNonce] = useState(0);
   const [emotion, setEmotion] = useState<string>("neutral");
+  const [professorSearch, setProfessorSearch] =
+    useState<ProfessorSearchState | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const micStreamRef = useRef<MediaStream | null>(null);
@@ -205,6 +228,7 @@ export function useRealtimeSession(): RealtimeSession {
     setStatus("idle");
     setAssistantSpeaking(false);
     setEmotion("neutral");
+    setProfessorSearch(null);
   }, [teardown]);
 
   const handleControl = useCallback((msg: Record<string, unknown>) => {
@@ -245,6 +269,34 @@ export function useRealtimeSession(): RealtimeSession {
         // (only when ENABLE_EMOTION=true server-side).
         setEmotion(String(msg.emotion ?? "neutral"));
         break;
+      case "tool_activity": {
+        const id = String(msg.id ?? "");
+        const status = String(msg.status ?? "error") as ProfessorSearchState["status"];
+        setProfessorSearch((current) => ({
+          id,
+          query: String(msg.query ?? current?.query ?? ""),
+          status,
+          message: msg.message ? String(msg.message) : undefined,
+          results: current?.id === id ? current.results : [],
+          sourceName: current?.id === id ? current.sourceName : undefined,
+          sourceUrl: current?.id === id ? current.sourceUrl : undefined,
+        }));
+        break;
+      }
+      case "tool_result": {
+        const results = Array.isArray(msg.results)
+          ? (msg.results as ProfessorResult[])
+          : [];
+        setProfessorSearch({
+          id: String(msg.id ?? ""),
+          query: String(msg.query ?? ""),
+          status: "completed",
+          results,
+          sourceName: String(msg.source_name ?? "İTÜ Akademi"),
+          sourceUrl: String(msg.source_url ?? ""),
+        });
+        break;
+      }
       case "turn_complete": {
         // Gemini has finished producing this turn, but the AudioWorklet may
         // still have buffered PCM. It will emit playback-drained when audible
@@ -282,6 +334,7 @@ export function useRealtimeSession(): RealtimeSession {
       const isCurrentAttempt = () => connectionAttemptRef.current === attempt;
       setStatus("connecting");
       setErrorMessage(null);
+      setProfessorSearch(null);
       try {
         // ── mic capture -> PCM16 @16k (UNCHANGED from the working original) ──
         // This getUserMedia + pcm16-capture-processor path is proven to deliver
@@ -670,6 +723,7 @@ export function useRealtimeSession(): RealtimeSession {
     assistantSpeaking,
     seekAttentionNonce,
     emotion,
+    professorSearch,
     outputAnalyserRef,
     connect,
     disconnect,

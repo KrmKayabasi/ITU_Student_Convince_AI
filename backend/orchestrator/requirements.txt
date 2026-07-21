@@ -1,5 +1,6 @@
 # İTÜ Convince AI — realtime orchestrator
 google-genai>=1.33.0
+httpx>=0.27.0
 fastapi>=0.110.0
 uvicorn[standard]>=0.29.0
 websockets>=13.1

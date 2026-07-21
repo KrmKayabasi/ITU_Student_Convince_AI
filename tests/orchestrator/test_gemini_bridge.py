@@ -41,6 +41,9 @@ def test_build_config_assembles():
     assert aad.prefix_padding_ms == 160
     assert aad.silence_duration_ms == 500
     assert cfg.speech_config.voice_config.prebuilt_voice_config.voice_name == "Aoede"
+    declaration = cfg.tools[0].function_declarations[0]
+    assert declaration.name == "search_itu_professors"
+    assert declaration.behavior == types.Behavior.NON_BLOCKING
 
 
 def _resp(*, audio=None, in_tx=None, out_tx=None, interrupted=None, turn_complete=None):
@@ -138,3 +141,54 @@ def test_normalize_fallback_to_response_data():
         model_turn=None, input_transcription=None, output_transcription=None,
         interrupted=None, turn_complete=None), data=b"\x09\x09")
     assert b._normalize(resp) == [{"type": "audio", "pcm16": b"\x09\x09"}]
+
+
+def test_normalize_tool_call_and_cancellation():
+    b = _bridge()
+    call = SimpleNamespace(id="call-1", name="search_itu_professors", args={"topic": "Robotik"})
+    response = SimpleNamespace(
+        server_content=None,
+        data=None,
+        tool_call=SimpleNamespace(function_calls=[call]),
+        tool_call_cancellation=SimpleNamespace(ids=["call-2"]),
+    )
+    assert b._normalize(response) == [
+        {
+            "type": "tool_call",
+            "calls": [
+                {
+                    "id": "call-1",
+                    "name": "search_itu_professors",
+                    "args": {"topic": "Robotik"},
+                }
+            ],
+        },
+        {"type": "tool_cancel", "ids": ["call-2"]},
+    ]
+
+
+def test_send_tool_response_is_scheduled_when_idle():
+    import asyncio
+
+    pytest.importorskip("google.genai")
+    from google.genai import types
+
+    b = _bridge()
+
+    class FakeSession:
+        response = None
+
+        async def send_tool_response(self, *, function_responses):
+            self.response = function_responses
+
+    session = FakeSession()
+    b._session = session
+    asyncio.run(
+        b.send_tool_response(
+            call_id="call-1",
+            name="search_itu_professors",
+            response={"results": []},
+        )
+    )
+    assert session.response.id == "call-1"
+    assert session.response.scheduling == types.FunctionResponseScheduling.WHEN_IDLE
