@@ -42,15 +42,8 @@ export interface Live2DModelLike {
 
 /** Minimal PIXI ticker shape the rig needs. */
 export interface TickerLike {
-  add(
-    fn: (dt: number) => void,
-    context?: unknown,
-    priority?: number,
-  ): void;
-  remove(
-    fn: (dt: number) => void,
-    context?: unknown,
-  ): void;
+  add(fn: (dt: number) => void): void;
+  remove(fn: (dt: number) => void): void;
 }
 
 /** Minimal PIXI.Application shape we touch (avoids importing pixi types). */

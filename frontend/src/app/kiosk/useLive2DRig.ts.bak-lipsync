@@ -337,7 +337,7 @@ export function useLive2DRig(
     // Attach to the PIXI ticker exposed by useLive2DModel. Fallback: a rAF
     // loop (so the rig still drives params if the ticker isn't reachable).
     if (tickerRef.current) {
-      tickerRef.current.add(frame, undefined, -20);
+      tickerRef.current.add(frame);
       bound = true;
       ticker = {
         add: () => {},
