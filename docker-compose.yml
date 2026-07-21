@@ -38,6 +38,10 @@ services:
       - CV_PIPELINE_WS_URL=ws://cv-pipeline:8000
       - FOCUS_LOSS_SECONDS=${FOCUS_LOSS_SECONDS:-5}
       - NUDGE_COOLDOWN_SECONDS=${NUDGE_COOLDOWN_SECONDS:-20}
+      # Avatar emotion classification (optional, heavy: needs torch+transformers).
+      # When enabled, the orchestrator emits {"type":"emotion"} on assistant
+      # transcripts; the Live2D avatar maps them to expressions. Off by default.
+      - ENABLE_EMOTION=${ENABLE_EMOTION:-false}
     depends_on:
       - cv-pipeline
     ports:

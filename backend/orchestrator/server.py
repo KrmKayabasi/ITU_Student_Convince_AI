@@ -40,6 +40,11 @@ try:
 except Exception:  # pragma: no cover - injector optional until P5 lands
     CvInjector = None  # type: ignore
 
+try:
+    from emotion import get_classifier  # noqa: E402
+except Exception:  # pragma: no cover - emotion is optional (heavy deps)
+    get_classifier = None  # type: ignore
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("orchestrator")
 
@@ -79,6 +84,14 @@ class SessionRunner:
             enable_proactive_audio=config.ENABLE_PROACTIVE_AUDIO,
         )
         self.injector = None
+        # ── avatar emotion state (per-session) ─────────────────────────────────
+        # Shared classifier instance (lazy-loaded on first transcript).
+        self._loop = asyncio.get_event_loop()
+        self._emotion = get_classifier() if get_classifier is not None else None
+        self._emotion_buf = ""           # accumulated assistant transcript for classification
+        self._emotion_last_emit = 0.0    # monotonic time of last emitted emotion
+        self._emotion_last_label = "neutral"
+        self._emotion_task: asyncio.Task | None = None
 
     # ── outbound helpers (only the sender task touches the socket) ────────────
     async def send_json(self, obj: dict) -> None:
@@ -130,12 +143,82 @@ class SessionRunner:
                 await self.send_bytes(ev["pcm16"])
             elif et == "output_transcript":
                 await self.send_json({"type": "transcript", "role": "assistant", "text": ev["text"]})
+                self._maybe_classify_emotion(ev["text"])
             elif et == "input_transcript":
                 await self.send_json({"type": "transcript", "role": "user", "text": ev["text"]})
             elif et == "interrupted":
+                self._reset_emotion("neutral")
                 await self.send_json({"type": "interrupt"})
             elif et == "turn_complete":
+                self._reset_emotion("neutral")
                 await self.send_json({"type": "turn_complete"})
+
+    # ── avatar emotion helpers ─────────────────────────────────────────────────
+    def _maybe_classify_emotion(self, chunk: str) -> None:
+        """Accumulate assistant text and (debounced) classify on sentence end.
+
+        Non-blocking: spawns a task so the realtime loop never waits on the
+        model. All failures are logged and swallowed — emotion is cosmetic.
+        """
+        clf = self._emotion
+        if clf is None:
+            return
+        self._emotion_buf += chunk or ""
+        buf = self._emotion_buf
+
+        # Wait for enough text AND a plausible sentence boundary.
+        ends_sentence = bool(buf) and buf[-1] in ".!?…\n"
+        if not ends_sentence:
+            # Also classify on long unbroken runs so slow streams still react.
+            if len(buf) < config.EMOTION_MIN_CHARS * 3:
+                return
+        if len(buf) < config.EMOTION_MIN_CHARS:
+            return
+
+        now = self._loop.time()
+        if now - self._emotion_last_emit < config.EMOTION_DEBOUNCE_S:
+            return
+
+        # Lazy-load the model on first qualifying chunk.
+        if not self._emotion_started:
+            self._emotion_started = True
+
+        # Snapshot + clear the buffer so concurrent chunks start fresh.
+        text, self._emotion_buf = buf, ""
+
+        # Coalesce: skip if a classification is already in flight.
+        if self._emotion_task is not None and not self._emotion_task.done():
+            return
+
+        self._emotion_task = asyncio.create_task(self._classify_and_emit(text, now))
+
+    async def _classify_and_emit(self, text: str, queued_at: float) -> None:
+        clf = self._emotion
+        if clf is None:
+            return
+        try:
+            if not clf._pipe:  # model not loaded yet
+                await clf.start()
+            label = await clf.classify(text)
+        except Exception:
+            logger.exception("emotion classification failed; continuing")
+            return
+        if not label:
+            return
+        # Only emit when the label actually changes (cut WS chatter).
+        if label == self._emotion_last_label:
+            self._emotion_last_emit = queued_at
+            return
+        self._emotion_last_label = label
+        self._emotion_last_emit = self._loop.time()
+        await self.send_json({"type": "emotion", "emotion": label})
+
+    def _reset_emotion(self, label: str = "neutral") -> None:
+        """Clear the buffer (barge-in / turn boundary)."""
+        self._emotion_buf = ""
+        if self._emotion_last_label != label:
+            self._emotion_last_label = label
+            asyncio.create_task(self.send_json({"type": "emotion", "emotion": label}))
 
     # ── orchestration ─────────────────────────────────────────────────────────
     async def run(self) -> None:

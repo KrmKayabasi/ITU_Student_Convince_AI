@@ -1,0 +1,354 @@
+"use client";
+
+/**
+ * useLive2DRig — the Live2D counterpart to useFaceRig.ts.
+ *
+ * Same FaceState machine, same asymmetric-EMA amplitude lip-sync
+ * (fast attack ~40ms / soft release ~110ms), same blink/nod/look-around and
+ * seekAttention overlay — but instead of writing SVG attributes we write
+ * Cubism 4 parameters on the model's core each frame via a PIXI ticker.
+ *
+ * The rig runs inside PIXI's ticker (added once when the model is ready),
+ * reading live state through refs so the effect binds once. Lip-sync amplitude
+ * is gated to the "speaking" state so barge-in closes the mouth within ~150ms.
+ *
+ * Parameters written (Cubism 4 standard IDs; Haru/Hiyori samples expose all):
+ *   ParamMouthOpenY  ← amplitude (speaking only)         [LipSync group]
+ *   ParamMouthForm   ← smile target + emotion delta       [-1..1]
+ *   ParamAngleX/Y/Z  ← head pose                          [-30..30]
+ *   ParamBodyAngleX  ← body sway
+ *   ParamEyeBallX/Y  ← gaze
+ *   ParamEyeLOpen/R  ← blink + emotion eye-open
+ *   ParamEyeSmile    ← smile/emotion                      [0..1]
+ *   ParamBrowLY/RY   ← brow raise / concern + emotion
+ *   ParamBreath       ← idle breathing
+ *   ParamCheek        ← emotion warmth                     [0..1]
+ *
+ * Idle motions are NOT suppressed — the model's own motion layers can run,
+ * but params we write each frame take precedence for the channels we own
+ * (mouth/gaze/brow/blink). The model's physics (hair sway) still runs.
+ */
+
+import { useEffect, useRef } from "react";
+import type { RefObject } from "react";
+import type { FaceState } from "./faceState";
+import type { AmplitudeSource } from "./amplitude";
+import type { Live2DModelLike, TickerLike } from "./useLive2DModel";
+import { emotionToDeltas, type ExpressionDeltas } from "./live2dExpressions";
+
+const SEEK_MS = 2600;
+
+export interface Live2DRigProps {
+  state: FaceState;
+  amplitude: AmplitudeSource;
+  seekAttentionNonce: number;
+  emotion: string;
+}
+
+// Live2D param IDs (Cubism 4 standard).
+const P = {
+  mouthOpen: "ParamMouthOpenY",
+  mouthForm: "ParamMouthForm",
+  angleX: "ParamAngleX",
+  angleY: "ParamAngleY",
+  angleZ: "ParamAngleZ",
+  bodyX: "ParamBodyAngleX",
+  eyeBallX: "ParamEyeBallX",
+  eyeBallY: "ParamEyeBallY",
+  eyeLOpen: "ParamEyeLOpen",
+  eyeROpen: "ParamEyeROpen",
+  eyeSmile: "ParamEyeSmile",
+  browLY: "ParamBrowLY",
+  browRY: "ParamBrowRY",
+  breath: "ParamBreath",
+  cheek: "ParamCheek",
+} as const;
+
+export function useLive2DRig(
+  modelRef: RefObject<Live2DModelLike | null>,
+  tickerRef: RefObject<TickerLike | null>,
+  ready: boolean,
+  props: Live2DRigProps
+): void {
+  const stateRef = useRef<FaceState>(props.state);
+  const ampRef = useRef<AmplitudeSource>(props.amplitude);
+  const emotionRef = useRef(props.emotion);
+  const seekUntilRef = useRef(0);
+  const lastNonceRef = useRef(props.seekAttentionNonce);
+
+  useEffect(() => {
+    stateRef.current = props.state;
+  }, [props.state]);
+  useEffect(() => {
+    ampRef.current = props.amplitude;
+  }, [props.amplitude]);
+  useEffect(() => {
+    emotionRef.current = props.emotion;
+  }, [props.emotion]);
+  useEffect(() => {
+    if (props.seekAttentionNonce !== lastNonceRef.current) {
+      lastNonceRef.current = props.seekAttentionNonce;
+      seekUntilRef.current = performance.now() + SEEK_MS;
+    }
+  }, [props.seekAttentionNonce]);
+
+  useEffect(() => {
+    if (!ready) return;
+
+    let ticker: { add: (fn: (dt: number) => void) => void; remove: (fn: (dt: number) => void) => void } | null = null;
+    let bound = false;
+
+    // Channel state (mirrors useFaceRig.ts).
+    const cur = {
+      angleX: 0,
+      angleY: 0,
+      angleZ: 0,
+      bodyX: 0,
+      brow: 0,
+      gazeX: 0,
+      gazeY: 0,
+      smile: 0.35,
+      mouthForm: 0,
+      eyeSmile: 0,
+      eyeOpen: 1,
+      cheek: 0.2,
+      open: 0,
+      energy: 0,
+    };
+    let blinkStart = -1;
+    let nextBlink = performance.now() + 1800;
+    let lookX = 0;
+    let lookY = 0;
+    let lookUntil = 0;
+    let nextLook = performance.now() + 4000;
+    let nodStart = -1;
+    let nextNod = performance.now() + 5000;
+    let last = performance.now();
+
+    const frame = (dtPixi: number) => {
+      // PIXI passes delta in frames (1 = 60fps); convert to seconds.
+      const now = performance.now();
+      const dt = Math.min(0.05, dtPixi / 60 + (now - last) / 1000);
+      last = now;
+      const t = now / 1000;
+      const st = stateRef.current;
+      const k = (tau: number) => 1 - Math.exp(-dt / tau);
+
+      // ── lip-sync amplitude (asymmetric EMA, gated to speaking) ──
+      const rawAmp = st === "speaking" ? ampRef.current.read() : 0;
+      cur.open += (rawAmp - cur.open) * k(rawAmp > cur.open ? 0.04 : 0.11);
+      cur.energy += (cur.open - cur.energy) * k(0.6);
+
+      // ── emotion deltas (blended on top of the base pose) ──
+      const e: ExpressionDeltas = emotionToDeltas(emotionRef.current);
+
+      // ── per-state targets ──
+      let tAngleX = 0;
+      let tAngleY = 0;
+      let tAngleZ = 0;
+      let tBodyX = 0;
+      let tBrow = 0;
+      let tGazeX = 0;
+      let tGazeY = 0;
+      let tSmile = 0.35;
+      let tEyeSmile = 0;
+      let tEyeOpen = 1;
+      let tCheek = 0.2;
+      let tMouthFormTarget = 0;
+
+      switch (st) {
+        case "attract":
+          tSmile = 0.5;
+          tEyeSmile = 0.3;
+          tAngleZ = 3 * Math.sin(0.31 * t) + 1 * Math.sin(0.83 * t);
+          tBodyX = 2 * Math.sin(0.21 * t);
+          if (now > nextLook) {
+            lookX = Math.random() * 0.4 - 0.2;
+            lookY = Math.random() * 0.2 - 0.1;
+            lookUntil = now + 1600;
+            nextLook = now + 6000 + Math.random() * 4000;
+          }
+          if (now < lookUntil) {
+            tGazeX = lookX;
+            tGazeY = lookY;
+          }
+          break;
+        case "connecting":
+          tSmile = 0.2;
+          tBrow = 0.15;
+          tGazeY = -0.15;
+          tAngleZ = 2 * Math.sin(1.7 * t);
+          break;
+        case "listening":
+          // Eye contact: face the user directly, eyes locked forward and
+          // slightly down (the camera sits below most kiosk screens).
+          tAngleX = 0;
+          tAngleY = 2;
+          tGazeX = 0;
+          tGazeY = 0.2;
+          tSmile = 0.35;
+          tEyeSmile = 0.2;
+          if (now > nextNod && nodStart < 0) {
+            nodStart = now;
+            nextNod = now + 6000 + Math.random() * 3000;
+          }
+          break;
+        case "speaking":
+          // Keep eye contact while talking; only a gentle natural sway remains.
+          tSmile = 0.3;
+          tBrow = 0.1;
+          tEyeSmile = 0.15;
+          tGazeX = 0.06 * Math.sin(2.1 * t);
+          tGazeY = 0.2;
+          tAngleX = 0;
+          tAngleY = 2 + 3 * cur.open;
+          tAngleZ = 1.2 * Math.sin(2 * Math.PI * 1.9 * t) * cur.energy;
+          tBodyX = 0.8 * Math.sin(2 * Math.PI * 1.9 * t) * cur.energy;
+          break;
+        case "thinking":
+          tSmile = 0.1;
+          tBrow = 0.3;
+          tGazeX = 0.4;
+          tGazeY = -0.35;
+          tAngleZ = 4;
+          break;
+        case "concerned":
+          tBrow = -0.5;
+          tSmile = -0.3;
+          tCheek = 0.05;
+          tEyeOpen = 0.85;
+          break;
+      }
+
+      // ── nod gesture (listening) ──
+      if (nodStart >= 0) {
+        const p = (now - nodStart) / 550;
+        if (p >= 1) nodStart = -1;
+        else tAngleY += 8 * Math.sin(Math.PI * p);
+      }
+
+      // ── seekAttention overlay ──
+      if (now < seekUntilRef.current) {
+        const p = 1 - (seekUntilRef.current - now) / SEEK_MS;
+        const env = Math.sin(Math.PI * Math.min(1, Math.max(0, p)));
+        tAngleY -= 10 * env;
+        tBrow = Math.max(tBrow, env);
+        tSmile = Math.max(tSmile, 0.6 * env);
+        tEyeSmile = Math.max(tEyeSmile, 0.4 * env);
+        if (p < 0.05 && blinkStart < 0) blinkStart = now; // attention blink
+      }
+
+      // ── apply emotion deltas to the targets (blended in) ──
+      tMouthFormTarget = tSmile + e.mouthForm;
+      tEyeSmile = Math.max(0, Math.min(1, tEyeSmile + e.eyeSmile));
+      tBrow += e.brow;
+      tEyeOpen = Math.max(0.1, Math.min(1.3, tEyeOpen + e.eyeOpen));
+      tGazeX += e.gazeX;
+      tGazeY += e.gazeY;
+      tCheek = Math.max(0, Math.min(1, tCheek + e.cheek));
+
+      // ── smoothing toward targets ──
+      cur.angleX += (tAngleX - cur.angleX) * k(0.3);
+      cur.angleY += (tAngleY - cur.angleY) * k(0.2);
+      cur.angleZ += (tAngleZ - cur.angleZ) * k(0.3);
+      cur.bodyX += (tBodyX - cur.bodyX) * k(0.4);
+      cur.brow += (tBrow - cur.brow) * k(0.15);
+      cur.gazeX += (tGazeX - cur.gazeX) * k(0.12);
+      cur.gazeY += (tGazeY - cur.gazeY) * k(0.12);
+      cur.smile += (tSmile - cur.smile) * k(0.25);
+      cur.eyeSmile += (tEyeSmile - cur.eyeSmile) * k(0.25);
+      cur.eyeOpen += (tEyeOpen - cur.eyeOpen) * k(0.2);
+      cur.cheek += (tCheek - cur.cheek) * k(0.5);
+      cur.mouthForm += (tMouthFormTarget - cur.mouthForm) * k(0.25);
+
+      // ── blink keyframes ──
+      if (blinkStart < 0 && now >= nextBlink) {
+        if (st === "speaking" && cur.open > 0.5) {
+          nextBlink = now + 300; // don't blink mid-loud-vowel
+        } else {
+          blinkStart = now;
+          nextBlink = now + (st === "attract" ? 3400 : 2800) + Math.random() * 3200;
+        }
+      }
+      let blink = 0;
+      if (blinkStart >= 0) {
+        const bt = now - blinkStart;
+        if (bt < 70) blink = bt / 70;
+        else if (bt < 110) blink = 1;
+        else if (bt < 240) blink = 1 - (bt - 110) / 130;
+        else {
+          blink = 0;
+          blinkStart = -1;
+        }
+      }
+      const eyeOpen = Math.max(0, cur.eyeOpen * (1 - blink));
+
+      // ── breath ──
+      const breath = (st === "attract" ? 0.6 : 0.4) * (0.5 + 0.5 * Math.sin(2 * Math.PI * 0.22 * t));
+
+      // ── write params (clamped to Live2D ranges) ──
+      const model = modelRef.current;
+      if (!model) return;
+      const core = model.internalModel.coreModel;
+      const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+      try {
+        core.setParameterValueById(P.mouthOpen, clamp(cur.open, 0, 1));
+        core.setParameterValueById(P.mouthForm, clamp(cur.mouthForm, -1, 1));
+        core.setParameterValueById(P.angleX, clamp(cur.angleX, -30, 30));
+        core.setParameterValueById(P.angleY, clamp(cur.angleY, -30, 30));
+        core.setParameterValueById(P.angleZ, clamp(cur.angleZ, -30, 30));
+        core.setParameterValueById(P.bodyX, clamp(cur.bodyX, -10, 10));
+        core.setParameterValueById(P.eyeBallX, clamp(cur.gazeX, -1, 1));
+        core.setParameterValueById(P.eyeBallY, clamp(cur.gazeY, -1, 1));
+        core.setParameterValueById(P.eyeLOpen, clamp(eyeOpen, 0, 1));
+        core.setParameterValueById(P.eyeROpen, clamp(eyeOpen, 0, 1));
+        core.setParameterValueById(P.eyeSmile, clamp(cur.eyeSmile, 0, 1));
+        core.setParameterValueById(P.browLY, clamp(cur.brow, -1, 1));
+        core.setParameterValueById(P.browRY, clamp(cur.brow, -1, 1));
+        core.setParameterValueById(P.breath, clamp(breath, 0, 1));
+        core.setParameterValueById(P.cheek, clamp(cur.cheek, 0, 1));
+      } catch {
+        // A model may not expose every standard param; ignore write failures.
+      }
+    };
+
+    // Attach to the PIXI ticker exposed by useLive2DModel. Fallback: a rAF
+    // loop (so the rig still drives params if the ticker isn't reachable).
+    if (tickerRef.current) {
+      tickerRef.current.add(frame);
+      bound = true;
+      ticker = {
+        add: () => {},
+        remove: () => {
+          try {
+            tickerRef.current?.remove(frame);
+          } catch {
+            /* ignore */
+          }
+        },
+      };
+    }
+
+    if (!bound) {
+      let raf = 0;
+      const loop = () => {
+        frame(1);
+        raf = requestAnimationFrame(loop);
+      };
+      raf = requestAnimationFrame(loop);
+      ticker = {
+        add: () => {},
+        remove: () => cancelAnimationFrame(raf),
+      };
+    }
+
+    return () => {
+      try {
+        ticker?.remove(frame);
+      } catch {
+        /* ignore */
+      }
+    };
+    // Bind once when the model becomes ready; live values flow through refs.
+  }, [ready, modelRef, tickerRef]);
+}

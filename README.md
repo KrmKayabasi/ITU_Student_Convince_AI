@@ -2,12 +2,13 @@
 
 ## What is this?
 
-A real-time **browser kiosk** that talks prospective students into choosing İTÜ. A student stands in front of a screen, and **"Elif"** — an animated AI advisor with a hand-crafted SVG face — holds a natural Turkish voice conversation with them:
+A real-time **browser kiosk** that talks prospective students into choosing İTÜ. A student stands in front of a screen, and **"Elif"** — an animated AI advisor — holds a natural Turkish voice conversation with them:
 
 - 🗣️ **Real-time speech-to-speech** via Google **Gemini Live** (native audio, barge-in, affective dialog)
 - 🎥 **Reads body language** — posture, eye contact, emotion — via the CV pipeline (MediaPipe + ONNX)
 - 🧠 **CV feeds the conversation**: a one-time behavioral profile shapes Elif's opening line, and continuous focus tracking makes her *re-engage a distracted student* (face + voice together)
-- 👩 **Lip-synced talking face** — blinks, breathes, tilts her head while listening, and leans in to grab attention
+- 👩 **Swappable avatar** — the default hand-crafted SVG face ("Elif") or a real **Live2D** Cubism 4 model (`?avatar=live2d`), both lip-synced from the same playback-audio RMS
+- 😊 **Emotion-driven expressions** *(optional)* — a port of `jaison-core`'s `emotion_roberta` (go_emotions) classifier maps the assistant's tone to avatar expressions (`ENABLE_EMOTION=true`)
 
 Built for İTÜ's Computer Engineering department promotion stands.
 
@@ -30,7 +31,7 @@ docker compose up --build
 
 Then open **http://localhost:8080/kiosk** in Chrome, allow camera + mic, and press **"Konuşmaya Başla"**.
 
-**Design preview without any backend:** http://localhost:8080/kiosk?demo=1 — switch Elif's expression states, trigger the attention-grab, and test lip-sync with fake speech audio. (Also works with just `cd frontend && corepack pnpm dev` → http://localhost:3000/kiosk?demo=1.)
+**Design preview without any backend:** http://localhost:8080/kiosk?demo=1 — switch Elif's expression states, trigger the attention-grab, and test lip-sync with fake speech audio. Add `&avatar=live2d` to preview the Live2D renderer and its emotion picker. (Also works with just `cd frontend && corepack pnpm dev` → http://localhost:3000/kiosk?demo=1.)
 
 ### Local development (no Docker for orchestrator/frontend)
 
@@ -116,10 +117,14 @@ backend/
 ├── cv_pipeline/          FastAPI CV server (MediaPipe, ONNX, session state machine)
 │   └── detectors/        Face, pose, gaze, posture, emotion, person selection
 ├── orchestrator/         Gemini Live bridge + CV→LLM injection (version1 voice stack)
+│   └── emotion.py        Optional go_emotions classifier → avatar expressions (ENABLE_EMOTION)
 ├── speech_backend/       LEGACY cascaded stack (Whisper→Gemma→XTTS) — offline fallback
 └── voice_agent/          DiariZen speaker diarisation (used by the legacy desktop client)
 
-frontend/src/app/kiosk/   Kiosk UI: Elif SVG face + rAF rig, realtime/webcam/CV hooks, demo mode
+frontend/
+  public/live2d/          Cubism Core + bundled sample model (Haru) for the Live2D avatar
+  src/app/kiosk/          Kiosk UI: SVG "Elif" face OR Live2D avatar (same lip-sync source),
+                          realtime/webcam/CV hooks, emotion picker, demo mode
 client/                   LEGACY PyQt6 desktop client — now an optional CV debug tool
 deploy/nginx.conf         Single-entry gateway (WS-aware)
 tests/                    137 CV/voice tests + 22 orchestrator tests
@@ -145,6 +150,7 @@ See [docs/SETUP.md](docs/SETUP.md) for its full configuration (TTS backends, `SP
 ## Docs
 
 - **[UI Design Spec](docs/UI_DESIGN.md)** — the "Elif" concept: art direction, layout, motion & face states
+- **[Live2D Avatar](docs/LIVE2D.md)** — swapping SVG Elif ↔ Live2D Cubism 4, emotion channel, assets & licenses
 - **[Architecture](docs/ARCHITECTURE.md)** — component details, contracts, thread safety, scoring model
 - **[Orchestrator](backend/orchestrator/README.md)** — Gemini Live bridge, CV injection, protocol, env vars
 - **[Setup & Installation](docs/SETUP.md)** — legacy-stack environments, Docker, troubleshooting

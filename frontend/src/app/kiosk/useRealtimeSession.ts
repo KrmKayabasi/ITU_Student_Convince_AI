@@ -19,6 +19,9 @@ export interface RealtimeSession {
   assistantSpeaking: boolean;
   /** Increments each time the orchestrator asks the avatar to grab attention. */
   seekAttentionNonce: number;
+  /** Latest emotion label from the orchestrator (go_emotions, e.g. "joy").
+   *  "neutral" when emotion classification is disabled or on turn reset. */
+  emotion: string;
   /** AnalyserNode on the assistant audio output — drives lip-sync. */
   outputAnalyserRef: React.MutableRefObject<AnalyserNode | null>;
   connect: (sessionId: string) => Promise<void>;
@@ -36,6 +39,7 @@ export function useRealtimeSession(): RealtimeSession {
   const [history, setHistory] = useState<TranscriptLine[]>([]);
   const [assistantSpeaking, setAssistantSpeaking] = useState(false);
   const [seekAttentionNonce, setSeekAttentionNonce] = useState(0);
+  const [emotion, setEmotion] = useState<string>("neutral");
 
   const wsRef = useRef<WebSocket | null>(null);
   const micStreamRef = useRef<MediaStream | null>(null);
@@ -70,6 +74,7 @@ export function useRealtimeSession(): RealtimeSession {
     teardown();
     setStatus("idle");
     setAssistantSpeaking(false);
+    setEmotion("neutral");
   }, [teardown]);
 
   const handleControl = useCallback((msg: Record<string, unknown>) => {
@@ -95,9 +100,15 @@ export function useRealtimeSession(): RealtimeSession {
         playbackNodeRef.current?.port.postMessage({ type: "reset" });
         assistantBufRef.current = "";
         setAssistantSpeaking(false);
+        setEmotion("neutral");
         break;
       case "seekAttention":
         setSeekAttentionNonce((n) => n + 1);
+        break;
+      case "emotion":
+        // Avatar expression: a go_emotions label pushed by the orchestrator
+        // (only when ENABLE_EMOTION=true server-side).
+        setEmotion(String(msg.emotion ?? "neutral"));
         break;
       case "turn_complete": {
         const u = userBufRef.current.trim();
@@ -112,6 +123,7 @@ export function useRealtimeSession(): RealtimeSession {
         setUserText("");
         setAssistantText("");
         setAssistantSpeaking(false);
+        setEmotion("neutral");
         break;
       }
       case "error":
@@ -222,6 +234,7 @@ export function useRealtimeSession(): RealtimeSession {
     history,
     assistantSpeaking,
     seekAttentionNonce,
+    emotion,
     outputAnalyserRef,
     connect,
     disconnect,

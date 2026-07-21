@@ -1,0 +1,221 @@
+--progress is a global compose flag, better use `docker compose --progress xx build ...
+ Image itu-frontend:latest Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 1.69kB done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 2.35kB done
+#2 DONE 0.0s
+
+#3 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#3 DONE 0.5s
+
+#4 docker-image://docker.io/docker/dockerfile:1@sha256:87999aa3d42bdc6bea60565083ee17e86d1f3339802f543c0d03998580f9cb89
+#4 resolve docker.io/docker/dockerfile:1@sha256:87999aa3d42bdc6bea60565083ee17e86d1f3339802f543c0d03998580f9cb89 0.0s done
+#4 CACHED
+
+#5 [internal] load metadata for docker.io/library/node:18-alpine
+#5 DONE 0.5s
+
+#6 [internal] load .dockerignore
+#6 transferring context: 2B done
+#6 DONE 0.0s
+
+#7 [base 1/1] FROM docker.io/library/node:18-alpine@sha256:8d6421d663b4c28fd3ebc498332f249011d118945588d0a35cb9bc4b8ca09d9e
+#7 resolve docker.io/library/node:18-alpine@sha256:8d6421d663b4c28fd3ebc498332f249011d118945588d0a35cb9bc4b8ca09d9e 0.0s done
+#7 CACHED
+
+#8 [builder 1/5] WORKDIR /app
+#8 CACHED
+
+#9 [internal] load build context
+#9 transferring context: 4.50MB 0.2s done
+#9 DONE 0.3s
+
+#10 [deps 1/4] RUN apk add --no-cache libc6-compat
+#10 0.137 fetch https://dl-cdn.alpinelinux.org/alpine/v3.21/main/x86_64/APKINDEX.tar.gz
+#10 0.363 fetch https://dl-cdn.alpinelinux.org/alpine/v3.21/community/x86_64/APKINDEX.tar.gz
+#10 0.792 (1/3) Installing musl-obstack (1.2.3-r2)
+#10 0.818 (2/3) Installing libucontext (1.3.2-r0)
+#10 0.839 (3/3) Installing gcompat (1.1.0-r4)
+#10 0.868 OK: 10 MiB in 20 packages
+#10 DONE 0.9s
+
+#11 [deps 2/4] WORKDIR /app
+#11 DONE 0.0s
+
+#12 [deps 3/4] COPY package.json yarn.lock* package-lock.json* pnpm-lock.yaml* .npmrc* ./
+#12 DONE 0.3s
+
+#13 [deps 4/4] RUN corepack enable pnpm && pnpm i --frozen-lockfile
+#13 ...
+
+#14 [runner 2/7] RUN apk add --no-cache curl
+#14 0.138 fetch https://dl-cdn.alpinelinux.org/alpine/v3.21/main/x86_64/APKINDEX.tar.gz
+#14 0.374 fetch https://dl-cdn.alpinelinux.org/alpine/v3.21/community/x86_64/APKINDEX.tar.gz
+#14 0.821 (1/9) Installing brotli-libs (1.1.0-r2)
+#14 0.898 (2/9) Installing c-ares (1.34.8-r0)
+#14 0.934 (3/9) Installing libunistring (1.2-r0)
+#14 1.040 (4/9) Installing libidn2 (2.3.7-r0)
+#14 1.075 (5/9) Installing nghttp2-libs (1.69.0-r0)
+#14 1.106 (6/9) Installing libpsl (0.21.5-r3)
+#14 1.136 (7/9) Installing zstd-libs (1.5.6-r2)
+#14 1.207 (8/9) Installing libcurl (8.14.1-r2)
+#14 1.270 (9/9) Installing curl (8.14.1-r2)
+#14 1.311 Executing busybox-1.37.0-r12.trigger
+#14 1.316 OK: 14 MiB in 26 packages
+#14 DONE 1.4s
+
+#13 [deps 4/4] RUN corepack enable pnpm && pnpm i --frozen-lockfile
+#13 0.190 ! Corepack is about to download https://registry.npmjs.org/pnpm/-/pnpm-10.7.1.tgz
+#13 ...
+
+#15 [runner 3/7] RUN addgroup --system --gid 1001 nodejs
+#15 DONE 0.1s
+
+#16 [runner 4/7] RUN adduser --system --uid 1001 nextjs
+#16 DONE 0.2s
+
+#13 [deps 4/4] RUN corepack enable pnpm && pnpm i --frozen-lockfile
+#13 0.927 Lockfile is up to date, resolution step is skipped
+#13 0.948 Progress: resolved 1, reused 0, downloaded 0, added 0
+#13 1.001 Packages: +526
+#13 1.001 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#13 1.191 
+#13 1.191    ╭───────────────────────────────────────────────╮
+#13 1.191    │                                               │
+#13 1.191    │      Update available! 10.7.1 → 11.15.1.      │
+#13 1.191    │     Changelog: https://pnpm.io/v/11.15.1      │
+#13 1.191    │   To update, run: corepack use pnpm@11.15.1   │
+#13 1.191    │                                               │
+#13 1.191    ╰───────────────────────────────────────────────╯
+#13 1.191 
+#13 1.947 Progress: resolved 526, reused 0, downloaded 136, added 136
+#13 2.948 Progress: resolved 526, reused 0, downloaded 150, added 150
+#13 3.948 Progress: resolved 526, reused 0, downloaded 177, added 177
+#13 4.948 Progress: resolved 526, reused 0, downloaded 228, added 228
+#13 5.948 Progress: resolved 526, reused 0, downloaded 251, added 251
+#13 6.947 Progress: resolved 526, reused 0, downloaded 291, added 291
+#13 7.947 Progress: resolved 526, reused 0, downloaded 349, added 349
+#13 8.947 Progress: resolved 526, reused 0, downloaded 417, added 417
+#13 9.947 Progress: resolved 526, reused 0, downloaded 494, added 494
+#13 10.95 Progress: resolved 526, reused 0, downloaded 519, added 519
+#13 11.95 Progress: resolved 526, reused 0, downloaded 524, added 524
+#13 16.05 Progress: resolved 526, reused 0, downloaded 525, added 524
+#13 16.42 Progress: resolved 526, reused 0, downloaded 526, added 526, done
+#13 16.51 
+#13 16.51 dependencies:
+#13 16.51 + @mdx-js/loader 3.1.0
+#13 16.51 + @mdx-js/react 3.1.0
+#13 16.51 + @next/mdx 15.3.4
+#13 16.51 + @next/third-parties 15.3.2
+#13 16.51 + @types/http-proxy 1.17.16
+#13 16.51 + @types/mdx 2.0.13
+#13 16.51 + bcryptjs 3.0.2
+#13 16.51 + clsx 2.1.1
+#13 16.51 + http-proxy 1.18.1
+#13 16.51 + lucide-react 0.503.0
+#13 16.51 + next 15.2.6
+#13 16.51 + opus-recorder 8.0.5
+#13 16.51 + pixi-live2d-display 0.4.0
+#13 16.51 + pixi.js 6.5.10
+#13 16.51 + pretty-print-json 3.0.4
+#13 16.51 + react 19.1.0
+#13 16.51 + react-dom 19.1.0
+#13 16.51 + react-use-websocket 4.13.0
+#13 16.51 
+#13 16.51 devDependencies:
+#13 16.51 + @eslint/eslintrc 3.3.1
+#13 16.51 + @next/eslint-plugin-next 15.3.2
+#13 16.51 + @tailwindcss/postcss 4.1.3
+#13 16.51 + @types/bcrypt 5.0.2
+#13 16.51 + @types/node 20.17.30
+#13 16.51 + @types/react 19.1.0
+#13 16.51 + @types/react-dom 19.1.2
+#13 16.51 + eslint 9.24.0
+#13 16.51 + eslint-config-next 15.2.2
+#13 16.51 + eslint-plugin-react-hooks 5.2.0
+#13 16.51 + tailwindcss 4.1.3
+#13 16.51 + typescript 5.8.3
+#13 16.51 
+#13 16.51 ╭ Warning ─────────────────────────────────────────────────────────────────────╮
+#13 16.51 │                                                                              │
+#13 16.51 │   Ignored build scripts: sharp.                                              │
+#13 16.51 │   Run "pnpm approve-builds" to pick which dependencies should be allowed     │
+#13 16.51 │   to run scripts.                                                            │
+#13 16.51 │                                                                              │
+#13 16.51 ╰──────────────────────────────────────────────────────────────────────────────╯
+#13 16.51 
+#13 16.53 Done in 15.8s using pnpm v10.7.1
+#13 DONE 16.7s
+
+#17 [builder 2/5] COPY --from=deps /app/node_modules ./node_modules
+#17 DONE 0.8s
+
+#18 [builder 3/5] COPY --from=deps /root/.cache/node/corepack /root/.cache/node/corepack
+#18 DONE 0.1s
+
+#19 [builder 4/5] COPY . .
+#19 DONE 6.3s
+
+#20 [builder 5/5] RUN corepack enable pnpm && pnpm run build
+#20 0.423 
+#20 0.423 > tts-demo@0.1.0 build /app
+#20 0.423 > next build
+#20 0.423 
+#20 0.757    ▲ Next.js 15.2.6
+#20 0.758 
+#20 0.794    Creating an optimized production build ...
+#20 4.476  ✓ Compiled successfully
+#20 4.476    Linting and checking validity of types ...
+#20 6.132    Collecting page data ...
+#20 6.651    Generating static pages (0/9) ...
+#20 6.963    Generating static pages (2/9) 
+#20 6.963    Generating static pages (4/9) 
+#20 6.963    Generating static pages (6/9) 
+#20 6.988  ✓ Generating static pages (9/9)
+#20 7.085    Finalizing page optimization ...
+#20 7.085    Collecting build traces ...
+#20 11.85 
+#20 11.85 Route (app)                                 Size  First Load JS
+#20 11.85 ┌ ○ /                                      24 kB         133 kB
+#20 11.85 ├ ○ /_not-found                            978 B         102 kB
+#20 11.85 ├ ○ /kiosk                               12.4 kB         113 kB
+#20 11.85 ├ ○ /voice-donation                      1.63 kB         106 kB
+#20 11.85 ├ ○ /voice-donation/privacy-policy         362 B         101 kB
+#20 11.85 └ ○ /voice-donation/terms-of-use           362 B         101 kB
+#20 11.85 + First Load JS shared by all             101 kB
+#20 11.85   ├ chunks/156-dc132b02114f9257.js       45.7 kB
+#20 11.85   ├ chunks/c08e642f-fcc89aca9e4285ea.js  53.3 kB
+#20 11.85   └ other shared chunks (total)          2.08 kB
+#20 11.85 
+#20 11.85 
+#20 11.86 ○  (Static)  prerendered as static content
+#20 11.86 
+#20 DONE 11.9s
+
+#21 [runner 5/7] COPY --from=builder /app/public ./public
+#21 DONE 0.0s
+
+#22 [runner 6/7] COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+#22 DONE 0.1s
+
+#23 [runner 7/7] COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+#23 DONE 0.1s
+
+#24 exporting to image
+#24 exporting layers
+#24 exporting layers 1.2s done
+#24 exporting manifest sha256:e95f6e6a89b611000bee40913b60c2524d2825080faacb9cb4e3abaf6b813891 done
+#24 exporting config sha256:ae58d82e614468cb88d7a1da2c28990094824d7f919bfffe4e7a2932f237de59 done
+#24 exporting attestation manifest sha256:9671ab44595434abe44a9ed124121eecdccd146030cd8b65231000eb468afddf 0.0s done
+#24 exporting manifest list sha256:a02cd9a797f3e6fc1476537b78860a5c3d356ce2c47e56aa64097ab8085b9731 0.0s done
+#24 naming to docker.io/library/itu-frontend:latest done
+#24 unpacking to docker.io/library/itu-frontend:latest
+#24 unpacking to docker.io/library/itu-frontend:latest 0.3s done
+#24 DONE 1.5s
+
+#25 resolving provenance for metadata file
+#25 DONE 0.0s
+ Image itu-frontend:latest Built 

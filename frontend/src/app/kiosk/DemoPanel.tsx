@@ -2,6 +2,7 @@
 
 import type { FaceState } from "./faceState";
 import type { FakeAmplitudeKind } from "./amplitude";
+import type { AvatarMode } from "./FaceStage";
 
 const STATES: FaceState[] = [
   "attract",
@@ -11,6 +12,18 @@ const STATES: FaceState[] = [
   "thinking",
   "concerned",
 ];
+
+// Emotion categories the rig maps to Live2D expression deltas (live2dExpressions.ts).
+// The first option must stay "neutral" — that is the rest/idle value.
+const EMOTIONS = [
+  "neutral",
+  "joy",
+  "sadness",
+  "anger",
+  "fear",
+  "surprise",
+  "curiosity",
+] as const;
 
 export interface DemoControls {
   faceState: FaceState;
@@ -22,6 +35,10 @@ export interface DemoControls {
   fakeSubtitles: boolean;
   setFakeSubtitles: (f: boolean) => void;
   triggerSeek: () => void;
+  emotion: string;
+  setEmotion: (e: string) => void;
+  avatarMode: AvatarMode;
+  setAvatarMode: (m: AvatarMode) => void;
 }
 
 /** Left control rail for /kiosk?demo=1 — visual QA without any backend. */
@@ -32,6 +49,21 @@ export function DemoPanel(c: DemoControls) {
       style={{ background: "rgba(10,17,32,0.88)", border: "1px solid rgba(148,163,189,0.25)" }}
     >
       <p className="font-[700] text-[var(--k-amber)]">DEMO MODU</p>
+
+      <div className="flex flex-col gap-1">
+        <p className="font-[600] text-[var(--k-ink-dim)]">Avatar</p>
+        {(["svg", "live2d"] as AvatarMode[]).map((m) => (
+          <label key={m} className="flex items-center gap-2 text-[var(--k-ink)]">
+            <input
+              type="radio"
+              name="avatar-mode"
+              checked={c.avatarMode === m}
+              onChange={() => c.setAvatarMode(m)}
+            />
+            {m}
+          </label>
+        ))}
+      </div>
 
       <div className="flex flex-col gap-1">
         <p className="font-[600] text-[var(--k-ink-dim)]">Yüz durumu</p>
@@ -46,6 +78,22 @@ export function DemoPanel(c: DemoControls) {
             {s}
           </label>
         ))}
+      </div>
+
+      <div className="flex flex-col gap-1">
+        <p className="font-[600] text-[var(--k-ink-dim)]">Duygu (emotion)</p>
+        <select
+          value={c.emotion}
+          onChange={(e) => c.setEmotion(e.target.value)}
+          className="rounded-lg bg-[#0b1426] px-2 py-1 text-[var(--k-ink)]"
+          style={{ border: "1px solid rgba(148,163,189,0.3)" }}
+        >
+          {EMOTIONS.map((em) => (
+            <option key={em} value={em}>
+              {em}
+            </option>
+          ))}
+        </select>
       </div>
 
       <button

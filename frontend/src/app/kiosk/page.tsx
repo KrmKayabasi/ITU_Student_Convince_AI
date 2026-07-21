@@ -23,6 +23,7 @@ import {
   createFakeAmplitude,
   type FakeAmplitudeKind,
 } from "./amplitude";
+import { type AvatarMode } from "./FaceStage";
 
 import { KioskShell } from "./KioskShell";
 import { KioskHeader } from "./KioskHeader";
@@ -42,7 +43,7 @@ function newSessionId(): string {
 
 /* ── Production kiosk ─────────────────────────────────────────────────────── */
 
-function ProductionKiosk() {
+function ProductionKiosk({ avatarMode }: { avatarMode: AvatarMode }) {
   const session = useRealtimeSession();
   const webcam = useWebcamStream();
   const cv = useCvSignals();
@@ -91,6 +92,8 @@ function ProductionKiosk() {
         faceState={faceState}
         amplitude={amplitude}
         seekAttentionNonce={session.seekAttentionNonce}
+        avatarMode={avatarMode}
+        emotion={session.emotion}
       />
       <SubtitlePanel
         assistantText={session.assistantText}
@@ -123,13 +126,21 @@ const DEMO_LINES: TranscriptLine[] = [
 const DEMO_STREAM =
   "Harika bir soru! İTÜ Bilgisayar Mühendisliği'nin 2025 taban sıralaması yaklaşık 1435'ti; senin sıralamanla oldukça şanslısın. Peki yazılım mı yapay zekâ mı — hangisi seni daha çok heyecanlandırıyor?";
 
-function DemoKiosk({ initialState }: { initialState: FaceState }) {
+function DemoKiosk({
+  initialState,
+  avatarMode: initialAvatarMode,
+}: {
+  initialState: FaceState;
+  avatarMode: AvatarMode;
+}) {
   const [faceState, setFaceState] = useState<FaceState>(initialState);
   const [ampKind, setAmpKind] = useState<FakeAmplitudeKind>("speech");
   const [focused, setFocused] = useState(true);
   const [fakeSubtitles, setFakeSubtitles] = useState(false);
   const [nonce, setNonce] = useState(0);
   const [streamedText, setStreamedText] = useState("");
+  const [emotion, setEmotion] = useState<string>("neutral");
+  const [avatarMode, setAvatarMode] = useState<AvatarMode>(initialAvatarMode);
 
   const amplitude = useMemo(() => createFakeAmplitude(ampKind), [ampKind]);
 
@@ -161,6 +172,8 @@ function DemoKiosk({ initialState }: { initialState: FaceState }) {
         faceState={shownState}
         amplitude={amplitude}
         seekAttentionNonce={nonce}
+        avatarMode={avatarMode}
+        emotion={emotion}
       />
       <SubtitlePanel
         assistantText={fakeSubtitles ? streamedText : ""}
@@ -187,6 +200,10 @@ function DemoKiosk({ initialState }: { initialState: FaceState }) {
         fakeSubtitles={fakeSubtitles}
         setFakeSubtitles={setFakeSubtitles}
         triggerSeek={() => setNonce((n) => n + 1)}
+        emotion={emotion}
+        setEmotion={setEmotion}
+        avatarMode={avatarMode}
+        setAvatarMode={setAvatarMode}
       />
     </KioskShell>
   );
@@ -203,16 +220,30 @@ const FACE_STATES: FaceState[] = [
   "concerned",
 ];
 
+function resolveAvatarMode(params: URLSearchParams): AvatarMode {
+  // ?avatar=live2d selects the in-browser Live2D renderer; anything else (or
+  // unset, or the NEXT_PUBLIC_AVATAR env) falls back to the SVG Elif face.
+  const fromEnv =
+    typeof process !== "undefined" && process.env.NEXT_PUBLIC_AVATAR === "live2d"
+      ? "live2d"
+      : "svg";
+  const q = params.get("avatar");
+  if (q === "live2d") return "live2d";
+  if (q === "svg") return "svg";
+  return fromEnv as AvatarMode;
+}
+
 function KioskRouter() {
   const params = useSearchParams();
   const demo = params.get("demo") === "1";
   const stateParam = params.get("state") as FaceState | null;
   const initialState =
     stateParam && FACE_STATES.includes(stateParam) ? stateParam : "attract";
+  const avatarMode = resolveAvatarMode(params);
   return demo ? (
-    <DemoKiosk initialState={initialState} />
+    <DemoKiosk initialState={initialState} avatarMode={avatarMode} />
   ) : (
-    <ProductionKiosk />
+    <ProductionKiosk avatarMode={avatarMode} />
   );
 }
 

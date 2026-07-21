@@ -5,3 +5,6 @@ uvicorn[standard]>=0.29.0
 websockets>=13.1
 numpy>=1.24
 scipy>=1.10
+# NOTE: avatar emotion classification (transformers + torch, ~200MB) lives in
+# requirements-emotion.txt and is installed only when ENABLE_EMOTION=true.
+# Keeping the base image slim when emotion is off.

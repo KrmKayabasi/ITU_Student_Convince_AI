@@ -76,6 +76,17 @@ SERVER_PORT = _int("ORCH_PORT", 8001)
 # Optional bearer/query token to protect the browser WS (off by default in dev).
 ORCH_TOKEN = _str("ORCH_TOKEN", "")
 
+# ── Avatar emotion (ported from jaison-core emotion_roberta) ───────────────────
+# Disabled by default: requires `transformers` + `torch` (heavy). When off, the
+# avatar falls back to FaceState-only expressions and the orchestrator never
+# imports torch.
+ENABLE_EMOTION = _bool("ENABLE_EMOTION", False)
+EMOTION_MODEL = _str("EMOTION_MODEL", "SamLowe/roberta-base-go_emotions")
+# Min seconds between classifications (avoid re-classifying on every token).
+EMOTION_DEBOUNCE_S = _float("EMOTION_DEBOUNCE_S", 0.6)
+# Min accumulated assistant chars before a classification is attempted.
+EMOTION_MIN_CHARS = _int("EMOTION_MIN_CHARS", 12)
+
 
 # ── System persona (SYSTEM_PROMPT.md) ─────────────────────────────────────────
 _sys_prompt_local = os.path.join(os.path.dirname(__file__), "SYSTEM_PROMPT.md")

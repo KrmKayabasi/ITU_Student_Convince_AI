@@ -17,6 +17,9 @@
 /.next/
 /out/
 
+# typescript incremental build info (local only)
+*.tsbuildinfo
+
 # production
 /build
 

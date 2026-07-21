@@ -1,0 +1,52 @@
+# Local testing overrides — automatically merged by `docker compose up`.
+# (docker compose reads docker-compose.yml THEN docker-compose.override.yml.)
+#
+# This file adds:
+#   1. orchestrator-emotion — the orchestrator rebuilt with torch/transformers
+#      so ENABLE_EMOTION=true works (avatar expressions). Heavy image (~200MB).
+#   2. frontend.ports — exposes :3000 directly so the Live2D avatar can be
+#      tested without the full gateway stack (Path 1 in docs/LIVE2D.md).
+#
+# To test ONLY the Live2D avatar with no backend:
+#   docker compose up frontend         # then http://localhost:3000/kiosk?demo=1&avatar=live2d
+#
+# To test with emotion:
+#   docker compose up --build orchestrator-emotion cv-pipeline frontend gateway
+#   # then point the frontend at orchestrator-emotion:8001 (see note below) OR
+#   # just hit the gateway on :8080/kiosk?avatar=live2d after swapping the
+#   # gateway's upstream from `orchestrator` to `orchestrator-emotion`.
+#
+# NOTE: orchestrator-emotion runs ALONGSIDE the default orchestrator on a
+# different host port (8002) to avoid conflicts. The gateway still routes /orch
+# to the default `orchestrator:8001`. To route through the gateway to the
+# emotion-enabled instance, either rename this service to `orchestrator`
+# (commenting out the base one) or update deploy/nginx.conf's upstream.
+
+services:
+  # ── Emotion-enabled orchestrator (torch + transformers) ─────────────────────
+  orchestrator-emotion:
+    image: itu-orchestrator-emotion:latest
+    build:
+      context: ./
+      dockerfile: backend/orchestrator/Dockerfile.emotion
+    environment:
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+      - GEMINI_LIVE_MODEL=${GEMINI_LIVE_MODEL:-gemini-3.1-flash-live-preview}
+      - GEMINI_API_VERSION=${GEMINI_API_VERSION:-v1alpha}
+      - GEMINI_AFFECTIVE_DIALOG=${GEMINI_AFFECTIVE_DIALOG:-false}
+      - GEMINI_PROACTIVE_AUDIO=${GEMINI_PROACTIVE_AUDIO:-false}
+      - GEMINI_VOICE=${GEMINI_VOICE:-Aoede}
+      - CV_PIPELINE_WS_URL=ws://cv-pipeline:8000
+      - FOCUS_LOSS_SECONDS=${FOCUS_LOSS_SECONDS:-5}
+      - NUDGE_COOLDOWN_SECONDS=${NUDGE_COOLDOWN_SECONDS:-20}
+      - ENABLE_EMOTION=true
+    depends_on:
+      - cv-pipeline
+    ports:
+      - "8002:8001"   # host 8002 -> container 8001 (avoids clashing with default orchestrator)
+    restart: unless-stopped
+
+  # ── Frontend: expose :3000 directly for backend-less avatar testing ─────────
+  frontend:
+    ports:
+      - "3000:3000"   # LOCAL TESTING ONLY — the gateway (:8080) is the real entry point in prod

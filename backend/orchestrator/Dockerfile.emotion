@@ -1,0 +1,26 @@
+# İTÜ Convince AI — realtime orchestrator WITH avatar emotion classification.
+#
+# Identical to Dockerfile, but installs requirements-emotion.txt (torch +
+# transformers, ~200MB) so the go_emotions classifier can run when
+# ENABLE_EMOTION=true. Use via the `orchestrator-emotion` service in
+# docker-compose.override.yml (see docs/LIVE2D.md).
+FROM python:3.11-slim
+
+WORKDIR /srv/orchestrator
+
+# Base deps + optional emotion deps (torch/transformers).
+COPY backend/orchestrator/requirements.txt ./requirements.txt
+COPY backend/orchestrator/requirements-emotion.txt ./requirements-emotion.txt
+RUN pip install --no-cache-dir -r requirements.txt -r requirements-emotion.txt
+
+# App code + the shared system persona (config.py looks for ./SYSTEM_PROMPT.md).
+COPY backend/orchestrator/ ./
+COPY SYSTEM_PROMPT.md ./SYSTEM_PROMPT.md
+
+ENV ORCH_HOST=0.0.0.0 \
+    ORCH_PORT=8001 \
+    ENABLE_EMOTION=true
+
+EXPOSE 8001
+
+CMD ["python", "server.py"]

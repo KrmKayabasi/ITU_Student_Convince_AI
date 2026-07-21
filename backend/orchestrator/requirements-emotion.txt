@@ -1,0 +1,9 @@
+# İTÜ Convince AI — OPTIONAL avatar emotion dependencies.
+# Install these IN ADDITION to requirements.txt when ENABLE_EMOTION=true.
+# They are heavy (torch CPU wheel ~200MB) and intentionally split out so the
+# default orchestrator image stays slim when emotion classification is off.
+#
+#   pip install -r requirements.txt -r requirements-emotion.txt
+#
+transformers>=4.40
+torch>=2.2

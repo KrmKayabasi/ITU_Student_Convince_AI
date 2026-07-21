@@ -1,14 +1,31 @@
 "use client";
 
 import { memo } from "react";
+import dynamic from "next/dynamic";
 import { AdvisorFace } from "./AdvisorFace";
 import type { FaceState } from "./faceState";
 import type { AmplitudeSource } from "./amplitude";
+
+// Live2D avatar loads only on the client — WebGL + the Cubism Core script are
+// browser-only, and we don't want to pull pixi.js into the SSR bundle.
+const Live2DAvatar = dynamic(
+  () => import("./Live2DAvatar").then((m) => m.Live2DAvatar),
+  {
+    ssr: false,
+    loading: () => null,
+  }
+);
+
+export type AvatarMode = "svg" | "live2d";
 
 interface FaceStageProps {
   faceState: FaceState;
   amplitude: AmplitudeSource;
   seekAttentionNonce: number;
+  /** Avatar renderer: hand-crafted SVG (default) or Live2D model. */
+  avatarMode?: AvatarMode;
+  /** Latest emotion label (go_emotions) — drives Live2D expressions. */
+  emotion?: string;
 }
 
 const RING: Record<FaceState, string> = {
@@ -24,6 +41,8 @@ export const FaceStage = memo(function FaceStage({
   faceState,
   amplitude,
   seekAttentionNonce,
+  avatarMode = "svg",
+  emotion = "neutral",
 }: FaceStageProps) {
   const ring = RING[faceState];
   return (
@@ -56,12 +75,22 @@ export const FaceStage = memo(function FaceStage({
             style={{ borderColor: "var(--k-amber)" }}
           />
         )}
-        <AdvisorFace
-          className="relative h-full w-full"
-          state={faceState}
-          amplitude={amplitude}
-          seekAttentionNonce={seekAttentionNonce}
-        />
+        {avatarMode === "live2d" ? (
+          <Live2DAvatar
+            className="relative h-full w-full"
+            state={faceState}
+            amplitude={amplitude}
+            seekAttentionNonce={seekAttentionNonce}
+            emotion={emotion}
+          />
+        ) : (
+          <AdvisorFace
+            className="relative h-full w-full"
+            state={faceState}
+            amplitude={amplitude}
+            seekAttentionNonce={seekAttentionNonce}
+          />
+        )}
       </div>
     </section>
   );
