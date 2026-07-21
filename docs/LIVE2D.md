@@ -1,12 +1,12 @@
-# Live2D Avatar (optional)
+# Live2D Avatar
 
 The kiosk ships with two interchangeable avatar renderers behind the same
 `FaceStage` component:
 
 | Mode  | Renderer                          | Lip-sync source          | Expressions          |
 |-------|-----------------------------------|--------------------------|----------------------|
-| `svg` | `AdvisorFace.tsx` — hand-crafted "Elif" SVG portrait (default) | playback-audio RMS (`AmplitudeSource`) | FaceState only |
-| `live2d` | `Live2DAvatar.tsx` — Cubism 4 model via `pixi-live2d-display` | same `AmplitudeSource` | FaceState **+** emotion overlay |
+| `live2d` | `Live2DAvatar.tsx` — Cubism 4 model via `pixi-live2d-display` (**default**) | playback-audio RMS (`AmplitudeSource`) | FaceState **+** emotion overlay |
+| `svg` | `AdvisorFace.tsx` — hand-crafted "Elif" SVG portrait (fallback) | same `AmplitudeSource` | FaceState only |
 
 Both renderers consume the **same** `AmplitudeSource` (the `AnalyserNode` RMS
 of the assistant playback audio), so lip-sync stays identical and in sync with
@@ -14,10 +14,12 @@ Gemini Live audio regardless of which face is shown.
 
 ## Selecting the avatar
 
-- Query param: `/kiosk?avatar=live2d` (or `?avatar=svg`).
-- Docker / build-time default: set `NEXT_PUBLIC_AVATAR=live2d` on the frontend
-  service. Otherwise the SVG Elif face is used.
-- Demo mode (no backend): `/kiosk?demo=1&avatar=live2d` — the `DemoPanel` also
+- **Default**: bare `/kiosk` uses Live2D.
+- Query param override: `/kiosk?avatar=svg` (force the SVG fallback) or
+  `/kiosk?avatar=live2d` (force Live2D).
+- Build-time default: set `NEXT_PUBLIC_AVATAR=svg` on the frontend if your
+  deployment needs the SVG face as the default (e.g. machines without WebGL).
+- Demo mode (no backend): `/kiosk?demo=1` — the `DemoPanel` also
   has an Avatar radio to switch live, plus an emotion dropdown to drive the
   Live2D expression map without a server.
 

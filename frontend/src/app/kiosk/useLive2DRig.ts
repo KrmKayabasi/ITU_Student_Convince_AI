@@ -109,6 +109,7 @@ export function useLive2DRig(
       gazeY: 0,
       smile: 0.35,
       mouthForm: 0,
+      lipShape: 0,
       eyeSmile: 0,
       eyeOpen: 1,
       cheek: 0.2,
@@ -124,6 +125,9 @@ export function useLive2DRig(
     let nodStart = -1;
     let nextNod = performance.now() + 5000;
     let last = performance.now();
+    // Diagnostic: print state + amplitude once per second so we can see WHY
+    // the mouth isn't moving (state wrong? amplitude always 0? param write?).
+    let nextDiagLog = performance.now();
 
     const frame = (dtPixi: number) => {
       // PIXI passes delta in frames (1 = 60fps); convert to seconds.
@@ -135,9 +139,26 @@ export function useLive2DRig(
       const k = (tau: number) => 1 - Math.exp(-dt / tau);
 
       // ── lip-sync amplitude (asymmetric EMA, gated to speaking) ──
-      const rawAmp = st === "speaking" ? ampRef.current.read() : 0;
-      cur.open += (rawAmp - cur.open) * k(rawAmp > cur.open ? 0.04 : 0.11);
+      // Apply a gain curve before smoothing so quiet speech still opens the
+      // mouth visibly and loud syllables push it wider. pow(0.6) lifts the
+      // mid-range; the *1.15 gain widens the ceiling a touch. Clamped after.
+      const ampIn = st === "speaking" ? ampRef.current.read() : 0;
+      const rawAmp = Math.min(1.15, Math.pow(ampIn, 0.6) * 1.15);
+      cur.open += (rawAmp - cur.open) * k(rawAmp > cur.open ? 0.035 : 0.10);
       cur.energy += (cur.open - cur.energy) * k(0.6);
+      // Lip shaping: as the mouth opens, round the lips slightly toward an "O"
+      // (negative mouthForm = pursed); as it closes between syllables, let them
+      // relax back to the base smile. This makes the motion read as speech
+      // rather than a rigid chomp. Tracked separately so it lags the open by a
+      // few frames for a natural lip-flip feel.
+      const lipTarget = cur.open > 0.15 ? -0.35 * Math.min(1, cur.open) : 0;
+      cur.lipShape += (lipTarget - cur.lipShape) * k(0.08);
+
+      // Diagnostic: once per second, dump the values that decide mouth motion.
+      if (now >= nextDiagLog) {
+        nextDiagLog = now + 1000;
+        console.log("[L2D rig]", "state=" + st, "rawAmp=" + rawAmp.toFixed(3), "cur.open=" + cur.open.toFixed(3));
+      }
 
       // ── emotion deltas (blended on top of the base pose) ──
       const e: ExpressionDeltas = emotionToDeltas(emotionRef.current);
@@ -292,8 +313,9 @@ export function useLive2DRig(
       const core = model.internalModel.coreModel;
       const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
       try {
-        core.setParameterValueById(P.mouthOpen, clamp(cur.open, 0, 1));
-        core.setParameterValueById(P.mouthForm, clamp(cur.mouthForm, -1, 1));
+        core.setParameterValueById(P.mouthOpen, clamp(cur.open, 0, 1.1));
+        // mouthForm = base pose/emotion + live lip shaping (purse on open).
+        core.setParameterValueById(P.mouthForm, clamp(cur.mouthForm + cur.lipShape, -1, 1));
         core.setParameterValueById(P.angleX, clamp(cur.angleX, -30, 30));
         core.setParameterValueById(P.angleY, clamp(cur.angleY, -30, 30));
         core.setParameterValueById(P.angleZ, clamp(cur.angleZ, -30, 30));

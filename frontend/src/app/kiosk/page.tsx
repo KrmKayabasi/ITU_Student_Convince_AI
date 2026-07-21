@@ -221,15 +221,15 @@ const FACE_STATES: FaceState[] = [
 ];
 
 function resolveAvatarMode(params: URLSearchParams): AvatarMode {
-  // ?avatar=live2d selects the in-browser Live2D renderer; anything else (or
-  // unset, or the NEXT_PUBLIC_AVATAR env) falls back to the SVG Elif face.
+  // Live2D is the DEFAULT avatar. The SVG "Elif" face is available as an
+  // explicit fallback via ?avatar=svg (e.g. for machines without WebGL).
   const fromEnv =
-    typeof process !== "undefined" && process.env.NEXT_PUBLIC_AVATAR === "live2d"
-      ? "live2d"
-      : "svg";
+    typeof process !== "undefined" && process.env.NEXT_PUBLIC_AVATAR === "svg"
+      ? "svg"
+      : "live2d";
   const q = params.get("avatar");
-  if (q === "live2d") return "live2d";
   if (q === "svg") return "svg";
+  if (q === "live2d") return "live2d";
   return fromEnv as AvatarMode;
 }
 
