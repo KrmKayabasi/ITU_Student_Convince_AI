@@ -46,23 +46,10 @@ function Live2DAvatarInner({
   });
 
   return (
-    <div
-      className={className}
-      style={{
-        position: "relative",
-        width: "100%",
-        height: "100%",
-      }}
-    >
+    <div className={className} style={{ position: "relative" }}>
       <canvas
         ref={canvasRef}
-        style={{
-          width: "min(900px, 100%)",
-          height: "100%",
-          display: "block",
-          marginLeft: "auto",
-          marginRight: "auto",
-        }}
+        style={{ width: "100%", height: "100%", display: "block" }}
         aria-label="Live2D danışman"
         role="img"
       />

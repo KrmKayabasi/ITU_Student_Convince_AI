@@ -22,7 +22,7 @@ export function SubtitlePanel({
   const showGhost = !assistantText && !userText && lastExchange.length > 0;
 
   return (
-    <section className="z-10 col-start-1 row-start-3 flex flex-col items-center justify-start gap-2 px-10 pb-2 text-center">
+    <section className="z-10 row-start-3 flex flex-col items-center justify-start gap-2 px-10 pb-2 text-center">
       {assistantText && (
         <p className="k-fade-up max-w-4xl text-[clamp(1.4rem,2.6vw,2.2rem)] font-[550] leading-snug text-[var(--k-ink)]">
           {assistantText}
