@@ -6,11 +6,11 @@
  * Same FaceState machine, same asymmetric-EMA amplitude lip-sync
  * (fast attack ~40ms / soft release ~110ms), same blink/nod/look-around and
  * seekAttention overlay — but instead of writing SVG attributes we write
- * Cubism 4 parameters on the model's core each frame via a PIXI ticker.
+ * Cubism 4 parameters on the model's core each frame after its motion update.
  *
- * The rig runs inside PIXI's ticker (added once when the model is ready),
- * reading live state through refs so the effect binds once. Lip-sync amplitude
- * is gated to the "speaking" state so barge-in closes the mouth within ~150ms.
+ * The rig runs inside Cubism's model-update lifecycle, reading live state
+ * through refs so the effect binds once. Lip-sync amplitude is gated to the
+ * "speaking" state so barge-in closes the mouth within ~150ms.
  *
  * Parameters written (Cubism 4 standard IDs; Haru/Hiyori samples expose all):
  *   ParamMouthOpenY  ← amplitude (speaking only)         [LipSync group]
@@ -24,16 +24,15 @@
  *   ParamBreath       ← idle breathing
  *   ParamCheek        ← emotion warmth                     [0..1]
  *
- * Idle motions are NOT suppressed — the model's own motion layers can run,
- * but params we write each frame take precedence for the channels we own
- * (mouth/gaze/brow/blink). The model's physics (hair sway) still runs.
+ * Idle motions are NOT suppressed. They run first, then this rig composes the
+ * channels it owns (mouth/gaze/brow/blink). The model's physics still runs.
  */
 
 import { useEffect, useRef } from "react";
 import type { RefObject } from "react";
 import type { FaceState } from "./faceState";
 import type { AmplitudeSource } from "./amplitude";
-import type { Live2DModelLike, TickerLike } from "./useLive2DModel";
+import type { Live2DModelLike } from "./useLive2DModel";
 import { emotionToDeltas, type ExpressionDeltas } from "./live2dExpressions";
 
 const SEEK_MS = 2600;
@@ -66,7 +65,6 @@ const P = {
 
 export function useLive2DRig(
   modelRef: RefObject<Live2DModelLike | null>,
-  tickerRef: RefObject<TickerLike | null>,
   ready: boolean,
   props: Live2DRigProps
 ): void {
@@ -95,8 +93,10 @@ export function useLive2DRig(
   useEffect(() => {
     if (!ready) return;
 
-    let ticker: { add: (fn: (dt: number) => void) => void; remove: (fn: (dt: number) => void) => void } | null = null;
-    let bound = false;
+    const model = modelRef.current;
+    if (!model) return;
+    const internalModel = model.internalModel;
+    const core = internalModel.coreModel;
 
     // Channel state (mirrors useFaceRig.ts).
     const cur = {
@@ -129,10 +129,19 @@ export function useLive2DRig(
     // the mouth isn't moving (state wrong? amplitude always 0? param write?).
     let nextDiagLog = performance.now();
 
-    const frame = (dtPixi: number) => {
-      // PIXI passes delta in frames (1 = 60fps); convert to seconds.
+    const clamp = (v: number, lo: number, hi: number) =>
+      Math.max(lo, Math.min(hi, v));
+    const writeMouth = () => {
+      core.setParameterValueById(P.mouthOpen, clamp(cur.open, 0, 1.1));
+      core.setParameterValueById(
+        P.mouthForm,
+        clamp(cur.mouthForm + cur.lipShape, -1, 1),
+      );
+    };
+
+    const frame = () => {
       const now = performance.now();
-      const dt = Math.min(0.05, dtPixi / 60 + (now - last) / 1000);
+      const dt = Math.min(0.05, Math.max(0, (now - last) / 1000));
       last = now;
       const t = now / 1000;
       const st = stateRef.current;
@@ -308,14 +317,8 @@ export function useLive2DRig(
       const breath = (st === "attract" ? 0.6 : 0.4) * (0.5 + 0.5 * Math.sin(2 * Math.PI * 0.22 * t));
 
       // ── write params (clamped to Live2D ranges) ──
-      const model = modelRef.current;
-      if (!model) return;
-      const core = model.internalModel.coreModel;
-      const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
       try {
-        core.setParameterValueById(P.mouthOpen, clamp(cur.open, 0, 1.1));
-        // mouthForm = base pose/emotion + live lip shaping (purse on open).
-        core.setParameterValueById(P.mouthForm, clamp(cur.mouthForm + cur.lipShape, -1, 1));
+        writeMouth();
         core.setParameterValueById(P.angleX, clamp(cur.angleX, -30, 30));
         core.setParameterValueById(P.angleY, clamp(cur.angleY, -30, 30));
         core.setParameterValueById(P.angleZ, clamp(cur.angleZ, -30, 30));
@@ -334,43 +337,27 @@ export function useLive2DRig(
       }
     };
 
-    // Attach to the PIXI ticker exposed by useLive2DModel. Fallback: a rAF
-    // loop (so the rig still drives params if the ticker isn't reachable).
-    if (tickerRef.current) {
-      tickerRef.current.add(frame, undefined, -20);
-      bound = true;
-      ticker = {
-        add: () => {},
-        remove: () => {
-          try {
-            tickerRef.current?.remove(frame);
-          } catch {
-            /* ignore */
-          }
-        },
-      };
-    }
-
-    if (!bound) {
-      let raf = 0;
-      const loop = () => {
-        frame(1);
-        raf = requestAnimationFrame(loop);
-      };
-      raf = requestAnimationFrame(loop);
-      ticker = {
-        add: () => {},
-        remove: () => cancelAnimationFrame(raf),
-      };
-    }
+    // Motions (including Idle) run before this callback. Reassert the mouth at
+    // the final pre-draw stage as well, so expressions/physics can never close
+    // it after the audio-driven value has been composed.
+    const writeFinalMouth = () => {
+      try {
+        writeMouth();
+      } catch {
+        // The model may be in the middle of disposal.
+      }
+    };
+    internalModel.on("afterMotionUpdate", frame);
+    internalModel.on("beforeModelUpdate", writeFinalMouth);
 
     return () => {
       try {
-        ticker?.remove(frame);
+        internalModel.off("afterMotionUpdate", frame);
+        internalModel.off("beforeModelUpdate", writeFinalMouth);
       } catch {
         /* ignore */
       }
     };
     // Bind once when the model becomes ready; live values flow through refs.
-  }, [ready, modelRef, tickerRef]);
+  }, [ready, modelRef]);
 }

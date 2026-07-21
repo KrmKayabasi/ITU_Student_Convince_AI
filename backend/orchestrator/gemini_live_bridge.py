@@ -93,6 +93,17 @@ class GeminiLiveBridge:
             realtime_input_config=types.RealtimeInputConfig(
                 automatic_activity_detection=types.AutomaticActivityDetection(
                     disabled=False,
+                    # Local VAD is the first line of defense. Keep Gemini's
+                    # detector conservative as well so brief leaked background
+                    # speech does not start a turn or interrupt model audio.
+                    start_of_speech_sensitivity=(
+                        types.StartSensitivity.START_SENSITIVITY_LOW
+                    ),
+                    end_of_speech_sensitivity=(
+                        types.EndSensitivity.END_SENSITIVITY_HIGH
+                    ),
+                    prefix_padding_ms=160,
+                    silence_duration_ms=500,
                 )
             ),
             # Long-conversation sustainability: sliding-window compression lifts

@@ -42,9 +42,23 @@ class AudioOutputProcessor extends AudioWorkletProcessor {
       if (event.data.type == "reset") {
         debug("Reset audio processor state.");
         this.initState();
+        this.port.postMessage({ type: "playback-reset" });
+        return;
+      }
+      if (event.data.type == "end-of-turn") {
+        this.inputEnded = true;
+        // A very short response may not reach the normal initial-buffer
+        // threshold. Once no more input is coming, play whatever is queued.
+        if (this.currentSamples() > 0 && !this.started) {
+          this.start();
+        }
+        this.finishTurnIfDrained();
         return;
       }
       let frame = event.data.frame;
+      if (!frame) return;
+      // A frame after a completed turn begins the next playback turn.
+      this.inputEnded = false;
       this.frames.push(frame);
       if (this.currentSamples() >= this.initialBufferSamples && !this.started) {
         this.start();
@@ -107,6 +121,8 @@ class AudioOutputProcessor extends AudioWorkletProcessor {
     this.firstOut = false;
     this.remainingPartialBufferSamples = 0;
     this.timeInStream = 0;
+    this.inputEnded = false;
+    this.playbackActive = false;
     this.resetStart();
 
     // Metrics
@@ -151,6 +167,18 @@ class AudioOutputProcessor extends AudioWorkletProcessor {
     this.started = true;
     this.remainingPartialBufferSamples = this.partialBufferSamples;
     this.firstOut = true;
+    if (!this.playbackActive) {
+      this.playbackActive = true;
+      this.port.postMessage({ type: "playback-start" });
+    }
+  }
+
+  finishTurnIfDrained() {
+    if (!this.inputEnded || this.currentSamples() > 0) return;
+    this.inputEnded = false;
+    this.playbackActive = false;
+    this.resetStart();
+    this.port.postMessage({ type: "playback-drained" });
   }
 
   canPlay() {
@@ -173,6 +201,7 @@ class AudioOutputProcessor extends AudioWorkletProcessor {
         this.totalAudioPlayed += output.length / sampleRate;
       }
       this.remainingPartialBufferSamples -= output.length;
+      this.finishTurnIfDrained();
       return true;
     }
     if (this.firstOut) {
@@ -196,11 +225,7 @@ class AudioOutputProcessor extends AudioWorkletProcessor {
         this.offsetInFirstBuffer + to_copy
       );
       output.set(subArray, out_idx);
-      anyAudio =
-        anyAudio ||
-        output.some(function (x) {
-          x > 1e-4 || x < -1e-4;
-        });
+      anyAudio = anyAudio || subArray.some((x) => x > 1e-4 || x < -1e-4);
       this.offsetInFirstBuffer += to_copy;
       out_idx += to_copy;
       if (this.offsetInFirstBuffer == first.length) {
@@ -214,9 +239,9 @@ class AudioOutputProcessor extends AudioWorkletProcessor {
         output[i] *= i / out_idx;
       }
     }
-    if (out_idx < output.length && !anyAudio) {
+    if (out_idx < output.length && anyAudio && !this.inputEnded) {
       // At the end of a turn, we will get some padding of 0, so we only
-      // incease the buffer if we got some audio, e.g. we truly lagged in the middle of something.
+      // increase the buffer if we got some audio, e.g. we truly lagged in the middle of something.
       debug(this.timestamp(), "Missed some audio", output.length - out_idx);
       this.partialBufferSamples += this.partialBufferIncrement;
       this.partialBufferSamples = Math.min(
@@ -233,6 +258,7 @@ class AudioOutputProcessor extends AudioWorkletProcessor {
     this.totalAudioPlayed += output.length / sampleRate;
     this.actualAudioPlayed += out_idx / sampleRate;
     this.timeInStream += out_idx / sampleRate;
+    this.finishTurnIfDrained();
     return true;
   }
 }

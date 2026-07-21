@@ -49,13 +49,20 @@ export function useThinkingHint(
       hadTextRef.current = true;
       return;
     }
+    if (hadTextRef.current && assistantSpeaking) {
+      // userText currently clears at the model turn boundary. If audio is
+      // still playing, consume the edge rather than showing "thinking" after
+      // the answer has finished.
+      hadTextRef.current = false;
+      return;
+    }
     if (hadTextRef.current) {
       hadTextRef.current = false;
       setThinking(true);
       if (timerRef.current !== null) window.clearTimeout(timerRef.current);
       timerRef.current = window.setTimeout(() => setThinking(false), holdMs);
     }
-  }, [userText, holdMs]);
+  }, [userText, assistantSpeaking, holdMs]);
 
   useEffect(() => {
     if (assistantSpeaking) {

@@ -1,12 +1,12 @@
 // PCM16 capture worklet for the İTÜ kiosk.
 //
-// Takes mono mic audio at the AudioContext's native rate (commonly 48 kHz),
-// streaming-resamples it to a target rate (16 kHz for Gemini Live) with linear
-// interpolation across process() blocks, converts to little-endian Int16, and
-// posts the ArrayBuffer to the main thread (which forwards it over the WS).
-//
-// Mirrors the linear-interp fallback of resample_mono_float32 in
-// backend/orchestrator/audio_helpers.py so uplink/downlink stay symmetric.
+// Takes mono mic audio at the AudioContext's native rate
+// (commonly 48 kHz), streaming-resamples it to a target rate (16 kHz for Gemini
+// Live) with linear interpolation across process() blocks, converts to
+// little-endian Int16, and posts the ArrayBuffer to the main thread (which
+// runs Silero VAD before forwarding it over the WS). Mirrors the fallback of
+// resample_mono_float32 in backend/orchestrator/audio_helpers.py so
+// uplink/downlink stay symmetric.
 
 class Pcm16CaptureProcessor extends AudioWorkletProcessor {
   constructor(options) {

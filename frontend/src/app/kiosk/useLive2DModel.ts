@@ -26,6 +26,8 @@ export const DEFAULT_MODEL_URL = "/live2d/models/Haru/haru_greeter_t03.model3.js
 export interface Live2DModelLike {
   // pixi-live2d-display exposes the internal model for direct param writes.
   internalModel: {
+    on(event: "afterMotionUpdate" | "beforeModelUpdate", listener: () => void): void;
+    off(event: "afterMotionUpdate" | "beforeModelUpdate", listener: () => void): void;
     coreModel: {
       setParameterValueById(id: string, value: number): void;
       getParameterValueById(id: string): number;
@@ -38,9 +40,14 @@ export interface Live2DModelLike {
   width: number;
   height: number;
   update: (dt: number) => void;
+  destroy(options?: {
+    children?: boolean;
+    texture?: boolean;
+    baseTexture?: boolean;
+  }): void;
 }
 
-/** Minimal PIXI ticker shape the rig needs. */
+/** Minimal PIXI ticker shape used by the shared application clock. */
 export interface TickerLike {
   add(
     fn: (dt: number) => void,
@@ -58,7 +65,14 @@ export interface PixiApp {
   renderer: { resize: (w: number, h: number) => void };
   stage: { addChild: (child: unknown) => void };
   ticker: TickerLike;
-  destroy: (opts?: unknown) => void;
+  destroy: (
+    removeView?: boolean,
+    stageOptions?: {
+      children?: boolean;
+      texture?: boolean;
+      baseTexture?: boolean;
+    },
+  ) => void;
 }
 
 /** Minimal PIXI namespace shape used to construct the app. */
@@ -88,7 +102,6 @@ export interface Live2DModule {
 export interface Live2DModelHandle {
   canvasRef: RefObject<HTMLCanvasElement | null>;
   modelRef: RefObject<Live2DModelLike | null>;
-  tickerRef: RefObject<TickerLike | null>;
   ready: boolean;
   error: string | null;
 }
@@ -122,7 +135,6 @@ function ensureCubismCore(): Promise<void> {
 export function useLive2DModel(modelUrl: string = DEFAULT_MODEL_URL): Live2DModelHandle {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const modelRef = useRef<Live2DModelLike | null>(null);
-  const tickerRef = useRef<TickerLike | null>(null);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -145,6 +157,7 @@ export function useLive2DModel(modelUrl: string = DEFAULT_MODEL_URL): Live2DMode
         // repo's strict TS config, so we import untyped and go through minimal
         // local shapes.
         const pixiModule = await import("pixi.js");
+        if (cancelled) return;
         const PIXI = (pixiModule.default ?? pixiModule) as unknown as PixiCtor;
         console.log("[L2D] PIXI loaded; Application?", typeof PIXI?.Application, "Ticker?", typeof PIXI?.Ticker, "Ticker.shared?", typeof PIXI?.Ticker?.shared);
         // pixi-live2d-display reads PIXI off `window.PIXI` internally (NOT the
@@ -152,6 +165,7 @@ export function useLive2DModel(modelUrl: string = DEFAULT_MODEL_URL): Live2DMode
         // Without this global, it throws "o.shared is undefined" on first frame.
         (window as unknown as { PIXI?: PixiCtor }).PIXI = PIXI;
         const live2dNs = await import("pixi-live2d-display/cubism4");
+        if (cancelled) return;
         const live2dModule = (live2dNs.default ?? live2dNs) as unknown as Live2DModule;
         console.log("[L2D] live2d module loaded; Live2DModel?", typeof live2dModule?.Live2DModel);
         const { Live2DModel } = live2dModule;
@@ -178,15 +192,11 @@ export function useLive2DModel(modelUrl: string = DEFAULT_MODEL_URL): Live2DMode
         }) as PixiApp;
         console.log("[L2D] app created; ticker?", typeof appAny?.ticker, "ticker.add?", typeof appAny?.ticker?.add);
         app = appAny;
-        // With sharedTicker, appAny.ticker IS PIXI.Ticker.shared — expose it so
-        // the rig can add its per-frame param writer to the same loop.
-        tickerRef.current = appAny.ticker as TickerLike;
-
         console.log("[L2D] loading model:", modelUrl);
         const model = (await Live2DModel.from(modelUrl)) as Live2DModelLike;
         console.log("[L2D] model loaded OK:", (model as unknown as { internalModel?: { coreModel?: unknown } })?.internalModel ? "has coreModel" : "NO coreModel");
         if (cancelled) {
-          (model as unknown as { destroy?: () => void }).destroy?.();
+          model.destroy({ children: true });
           return;
         }
         modelRef.current = model;
@@ -242,16 +252,17 @@ export function useLive2DModel(modelUrl: string = DEFAULT_MODEL_URL): Live2DMode
       cancelled = true;
       resizeObs?.disconnect();
       try {
-        app?.destroy(true);
+        // React owns the canvas, and PIXI may cache textures by URL for the
+        // next model instance. Destroy the model/core without removing either.
+        app?.destroy(false, { children: true });
       } catch {
         /* ignore */
       }
       app = null;
       modelRef.current = null;
-      tickerRef.current = null;
       setReady(false);
     };
   }, [modelUrl]);
 
-  return { canvasRef, modelRef, tickerRef, ready, error };
+  return { canvasRef, modelRef, ready, error };
 }

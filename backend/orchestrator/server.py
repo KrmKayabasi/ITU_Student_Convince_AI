@@ -10,6 +10,7 @@ Transport (browser <-> orchestrator), one held-open WebSocket per visitor:
     - binary frame  = raw PCM16 mono 24 kHz  (model audio)
     - text frame    = JSON: {"type":"ready","sample_rate":24000}
                             {"type":"transcript","role":"user|assistant","text":...}
+                            {"type":"assistant_audio_start"}
                             {"type":"interrupt"}            (barge-in; flush playback)
                             {"type":"seekAttention"}        (avatar attention-grab)
                             {"type":"turn_complete"} / {"type":"error","message":...}
@@ -92,6 +93,7 @@ class SessionRunner:
         self._emotion_last_emit = 0.0    # monotonic time of last emitted emotion
         self._emotion_last_label = "neutral"
         self._emotion_task: asyncio.Task | None = None
+        self._assistant_audio_started = False
 
     # ── outbound helpers (only the sender task touches the socket) ────────────
     async def send_json(self, obj: dict) -> None:
@@ -140,6 +142,12 @@ class SessionRunner:
         async for ev in self.bridge.receive():
             et = ev["type"]
             if et == "audio":
+                if not self._assistant_audio_started:
+                    # Ordered before the first binary frame. The browser uses
+                    # this boundary to distinguish old in-flight PCM after a
+                    # local barge-in from the next legitimate response.
+                    await self.send_json({"type": "assistant_audio_start"})
+                    self._assistant_audio_started = True
                 await self.send_bytes(ev["pcm16"])
             elif et == "output_transcript":
                 await self.send_json({"type": "transcript", "role": "assistant", "text": ev["text"]})
@@ -147,9 +155,11 @@ class SessionRunner:
             elif et == "input_transcript":
                 await self.send_json({"type": "transcript", "role": "user", "text": ev["text"]})
             elif et == "interrupted":
+                self._assistant_audio_started = False
                 self._reset_emotion("neutral")
                 await self.send_json({"type": "interrupt"})
             elif et == "turn_complete":
+                self._assistant_audio_started = False
                 self._reset_emotion("neutral")
                 await self.send_json({"type": "turn_complete"})
 

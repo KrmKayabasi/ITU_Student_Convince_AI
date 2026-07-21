@@ -36,9 +36,9 @@ function Live2DAvatarInner({
   modelUrl,
   className,
 }: Live2DAvatarProps) {
-  const { canvasRef, modelRef, tickerRef, ready, error } = useLive2DModel(modelUrl);
+  const { canvasRef, modelRef, ready, error } = useLive2DModel(modelUrl);
 
-  useLive2DRig(modelRef, tickerRef, ready, {
+  useLive2DRig(modelRef, ready, {
     state,
     amplitude,
     seekAttentionNonce,

@@ -23,10 +23,23 @@ def test_missing_key_raises():
 
 def test_build_config_assembles():
     pytest.importorskip("google.genai")
+    from google.genai import types
+
     cfg = _bridge()._build_config()
     assert cfg.enable_affective_dialog is True
     assert cfg.proactivity.proactive_audio is True
-    assert cfg.realtime_input_config.automatic_activity_detection.disabled is False
+    aad = cfg.realtime_input_config.automatic_activity_detection
+    assert aad.disabled is False
+    assert (
+        aad.start_of_speech_sensitivity
+        == types.StartSensitivity.START_SENSITIVITY_LOW
+    )
+    assert (
+        aad.end_of_speech_sensitivity
+        == types.EndSensitivity.END_SENSITIVITY_HIGH
+    )
+    assert aad.prefix_padding_ms == 160
+    assert aad.silence_duration_ms == 500
     assert cfg.speech_config.voice_config.prebuilt_voice_config.voice_name == "Aoede"
 
 
