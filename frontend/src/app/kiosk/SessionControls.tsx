@@ -18,10 +18,10 @@ export const SessionControls = memo(function SessionControls({
   onStop,
   onRetry,
 }: SessionControlsProps) {
-  if (!started) return <footer className="row-start-4 h-[8dvh]" />;
+  if (!started) return <footer className="col-start-1 row-start-4 h-[8dvh]" />;
 
   return (
-    <footer className="z-10 row-start-4 flex flex-col items-center justify-center gap-2 pb-6">
+    <footer className="z-10 col-start-1 row-start-4 flex flex-col items-center justify-center gap-2 pb-6">
       {status === "error" && (
         <div className="flex items-center gap-3 rounded-lg px-4 py-2 text-sm font-[500]"
           style={{ background: "rgba(243,108,92,0.12)", color: "var(--k-danger)" }}

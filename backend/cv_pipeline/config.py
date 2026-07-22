@@ -43,6 +43,10 @@ PROFILE_MIN_SAMPLES = _int("PROFILE_MIN_SAMPLES", 30)
 PROFILE_TRIGGER_POLL_SECONDS = _float("PROFILE_TRIGGER_POLL_SECONDS", 0.5)
 # /focus: periyodik push aralığı.
 FOCUS_EMIT_INTERVAL_SECONDS = _float("FOCUS_EMIT_INTERVAL_SECONDS", 2.5)
+# /tracking: secilen yuzun konumunu dusuk gecikmeyle push eder. Son islenmis
+# gozlem bu esikten eskiyse yuz yok denmez; gozlem durumu unknown olur.
+TRACKING_EMIT_INTERVAL_SECONDS = _float("TRACKING_EMIT_INTERVAL_SECONDS", 0.2)
+TRACKING_STALE_AFTER_SECONDS = _float("TRACKING_STALE_AFTER_SECONDS", 1.0)
 # /debug: SADECE gelistirme/test amacli, uretim kontratinin disinda kanal.
 DEBUG_EMIT_INTERVAL_SECONDS = _float("DEBUG_EMIT_INTERVAL_SECONDS", 0.3)
 FOCUS_EYE_CONTACT_THRESHOLD = _float("FOCUS_EYE_CONTACT_THRESHOLD", 0.5)

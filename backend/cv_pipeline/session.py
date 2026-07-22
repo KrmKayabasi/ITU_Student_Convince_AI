@@ -17,9 +17,9 @@ from backend.cv_pipeline import config
 
 
 class SessionState(Enum):
-    IDLE = "IDLE"                  # kadrajda kimse yok
-    CALIBRATING = "CALIBRATING"    # yeni kişi geldi, baseline yakalanıyor
-    ACTIVE = "ACTIVE"              # normal analiz
+    IDLE = "IDLE"  # kadrajda kimse yok
+    CALIBRATING = "CALIBRATING"  # yeni kişi geldi, baseline yakalanıyor
+    ACTIVE = "ACTIVE"  # normal analiz
 
 
 # Geriye dönük uyumluluk için eski isimlerle de erişilebilir sabitler.
@@ -36,14 +36,22 @@ class RawSignals:
     """Tek bir işlenmiş kareden çıkan ham, henüz smoothing uygulanmamış değerler."""
 
     face_present: bool = False
-    lean: Optional[float] = None            # shoulder_z - hip_z (world landmarks)
-    eye_contact: Optional[float] = None      # baş pozu + göz blendshape'leri birleşik
+    # Pose can remain visible when a turned face briefly drops out. Such a
+    # frame is not evidence that the visitor left.
+    person_present: bool = False
+    lean: Optional[float] = None  # shoulder_z - hip_z (world landmarks)
+    eye_contact: Optional[float] = None  # baş pozu + göz blendshape'leri birleşik
     head_yaw_deg: Optional[float] = None
     spine_ratio: Optional[float] = None
     shoulder_tilt: Optional[float] = None
-    arms_crossed: Optional[bool] = None      # None = ölçülemedi (valid=False)
+    arms_crossed: Optional[bool] = None  # None = ölçülemedi (valid=False)
     emotion_label: Optional[str] = None
     emotion_scores: dict = field(default_factory=dict)
+    face_center_x: Optional[float] = None
+    face_center_y: Optional[float] = None
+    face_bbox_width: Optional[float] = None
+    face_bbox_height: Optional[float] = None
+    observation_ts: Optional[float] = None
 
 
 @dataclass
@@ -53,6 +61,8 @@ class SessionData:
     created_at: float = field(default_factory=time.time)
     last_frame_at: float = field(default_factory=time.time)
     last_face_seen_at: float = field(default_factory=time.time)
+    last_observation_at: Optional[float] = None
+    observation_invalidated: bool = False
     calibration_started_at: Optional[float] = None
 
     # Ring buffer'lar
@@ -81,6 +91,10 @@ class SessionData:
 
     def touch_frame(self) -> None:
         self.last_frame_at = time.time()
+
+    def invalidate_observation(self) -> None:
+        """Stream yokken son yuz sonucunun guncel oldugu varsayilmasin."""
+        self.observation_invalidated = True
 
     def reset_for_new_person(self) -> None:
         """Yeni bir kişi kadraja girdiğinde baseline, buffer ve tek-seferlik

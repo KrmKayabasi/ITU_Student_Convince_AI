@@ -28,7 +28,11 @@ from backend.cv_pipeline.detectors.emotion import EmotionWorker
 from backend.cv_pipeline.detectors.face import FaceLandmarkerWrapper
 from backend.cv_pipeline.detectors.gaze import compute_eye_contact
 from backend.cv_pipeline.detectors.pose import PoseLandmarkerWrapper
-from backend.cv_pipeline.detectors.posture import compute_arms_crossed, compute_lean, compute_spine
+from backend.cv_pipeline.detectors.posture import (
+    compute_arms_crossed,
+    compute_lean,
+    compute_spine,
+)
 from backend.cv_pipeline.detectors.select import select_primary_person
 from backend.cv_pipeline.session import RawSignals
 
@@ -39,6 +43,7 @@ class FrameSlot:
 
     _frame: Optional[np.ndarray] = None
     _frame_ts: float = 0.0
+    _frame_monotonic: float = 0.0
     _lock: threading.Lock = None  # __post_init__'te doldurulur
 
     def __post_init__(self) -> None:
@@ -49,13 +54,23 @@ class FrameSlot:
         with self._lock:
             self._frame = frame
             self._frame_ts = time.time()
+            self._frame_monotonic = time.monotonic()
 
     def get_latest(self) -> tuple[Optional[np.ndarray], float]:
         """En güncel kareyi (varsa) al. Alındıktan sonra tekrar dönmez."""
+        frame, ts, _ = self.get_latest_with_timestamps()
+        return frame, ts
+
+    def get_latest_with_timestamps(
+        self,
+    ) -> tuple[Optional[np.ndarray], float, float]:
+        """Return wall and monotonic capture times for the newest frame."""
         with self._lock:
-            frame, ts = self._frame, self._frame_ts
+            frame = self._frame
+            ts = self._frame_ts
+            monotonic_ts = self._frame_monotonic
             self._frame = None
-            return frame, ts
+            return frame, ts, monotonic_ts
 
 
 def _bbox_center(bbox: Tuple[float, float, float, float]) -> Tuple[float, float]:
@@ -137,8 +152,9 @@ class SignalExtractor:
         return self._timestamp_counter
 
     def extract(self, frame: Optional[np.ndarray]) -> RawSignals:
+        observation_ts = time.time()
         if frame is None or frame.size == 0:
-            return RawSignals(face_present=False)
+            return RawSignals(face_present=False, observation_ts=observation_ts)
 
         timestamp_ms = self._next_timestamp_ms()
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -150,8 +166,14 @@ class SignalExtractor:
         face, pose = select_primary_person(faces, poses, self._previous_face_center)
         if face is None:
             self._previous_face_center = None
-            return RawSignals(face_present=False)
-        self._previous_face_center = _bbox_center(face.bbox)
+            return RawSignals(
+                face_present=False,
+                person_present=bool(poses),
+                observation_ts=observation_ts,
+            )
+        face_center_x, face_center_y = _bbox_center(face.bbox)
+        self._previous_face_center = (face_center_x, face_center_y)
+        xmin, ymin, xmax, ymax = face.bbox
 
         gaze = compute_eye_contact(face.blendshapes, face.head_pose)
 
@@ -169,6 +191,12 @@ class SignalExtractor:
 
         return RawSignals(
             face_present=True,
+            person_present=True,
+            face_center_x=face_center_x,
+            face_center_y=face_center_y,
+            face_bbox_width=xmax - xmin,
+            face_bbox_height=ymax - ymin,
+            observation_ts=observation_ts,
             lean=lean,
             eye_contact=gaze.eye_contact,
             head_yaw_deg=gaze.head_yaw_deg,

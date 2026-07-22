@@ -99,6 +99,11 @@ class TestRawSignals:
         assert raw.spine_ratio is None
         assert raw.shoulder_tilt is None
         assert raw.arms_crossed is None
+        assert raw.face_center_x is None
+        assert raw.face_center_y is None
+        assert raw.face_bbox_width is None
+        assert raw.face_bbox_height is None
+        assert raw.observation_ts is None
 
     def test_can_set_all_fields(self):
         raw = RawSignals(

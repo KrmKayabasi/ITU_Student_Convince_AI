@@ -193,6 +193,14 @@ export function useRealtimeSession(): RealtimeSession {
   const assistantPlaybackEndedAtRef = useRef(Number.NEGATIVE_INFINITY);
   const suppressAssistantAudioRef = useRef(false);
 
+  const clearConversation = useCallback(() => {
+    userBufRef.current = "";
+    assistantBufRef.current = "";
+    setUserText("");
+    setAssistantText("");
+    setHistory([]);
+  }, []);
+
   const teardown = useCallback(() => {
     connectionAttemptRef.current += 1;
     try { wsRef.current?.close(); } catch {}
@@ -225,11 +233,13 @@ export function useRealtimeSession(): RealtimeSession {
 
   const disconnect = useCallback(() => {
     teardown();
+    clearConversation();
     setStatus("idle");
+    setErrorMessage(null);
     setAssistantSpeaking(false);
     setEmotion("neutral");
     setProfessorSearch(null);
-  }, [teardown]);
+  }, [clearConversation, teardown]);
 
   const handleControl = useCallback((msg: Record<string, unknown>) => {
     switch (msg.type) {
@@ -329,6 +339,7 @@ export function useRealtimeSession(): RealtimeSession {
   const connect = useCallback(
     async (sessionId: string) => {
       if (status === "connecting" || status === "active") return;
+      clearConversation();
       const attempt = connectionAttemptRef.current + 1;
       connectionAttemptRef.current = attempt;
       const isCurrentAttempt = () => connectionAttemptRef.current === attempt;
@@ -482,6 +493,7 @@ export function useRealtimeSession(): RealtimeSession {
           playbackNode.port.postMessage({ type: "reset" });
           wsRef.current = null;
           teardown();
+          clearConversation();
           setStatus((current) => current === "error" ? current : "idle");
           setAssistantSpeaking(false);
         };
@@ -709,7 +721,7 @@ export function useRealtimeSession(): RealtimeSession {
         teardown();
       }
     },
-    [status, handleControl, teardown]
+    [status, clearConversation, handleControl, teardown]
   );
 
   useEffect(() => () => teardown(), [teardown]);
