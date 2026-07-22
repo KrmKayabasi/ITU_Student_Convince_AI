@@ -2,7 +2,7 @@
 
 A real-time **browser kiosk** that talks prospective students into choosing İTÜ. A student stands in front of a screen and talks with **Haru** — an animated Live2D AI advisor — who holds a natural Turkish voice conversation, reads body language, and adapts.
 
-> Built for İTÜ Computer Engineering promotion stands. Runs entirely in Docker — no host Python or Node required.
+> Built for İTÜ Computer Engineering promotion stands. Runs via Docker or a lightweight Python venv — pick what works for you.
 
 ---
 
@@ -74,12 +74,206 @@ That's it. The Live2D avatar is the default — no query params needed.
 
 ---
 
-## Try it without any backend (avatar preview)
+## Quick Start (Python venv — no Docker)
+
+Prefer this path when you want lighter/faster iteration, can't install Docker, or need to debug Python services directly. Works on **macOS, Linux, and Windows** (PowerShell or Git Bash).
+
+### Prerequisites
+
+1. **Python 3.11+** — check with `python3 --version` (macOS/Linux) or `python --version` (Windows).
+2. **Node.js 18+** — [install from nodejs.org](https://nodejs.org/). The installer includes `corepack` for pnpm.
+3. **A webcam and microphone** (built-in laptop ones are fine).
+4. **Google Chrome** (required — Firefox/Zen block WebGL on `localhost`).
+5. **A Google AI Studio API key** — get one free at [aistudio.google.com/apikey](https://aistudio.google.com/apikey).
+6. **Linux only** — system libraries for OpenCV:
+   ```bash
+   sudo apt-get install -y libgl1 libglib2.0-0
+   ```
+   macOS ships these via system frameworks (no extra packages). Windows wheels bundle everything.
+
+### 1. Clone and enter the repo
+
+```bash
+git clone <repo-url> ITU_Student_Convince_AI
+cd ITU_Student_Convince_AI
+```
+
+### 2. Download CV model files (~50 MB)
+
+**macOS / Linux:**
+```bash
+bash scripts/fetch_models.sh
+```
+
+**Windows (PowerShell):**
+```powershell
+mkdir -p models
+curl -L -o models/face_landmarker.task "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task"
+curl -L -o models/pose_landmarker_full.task "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/latest/pose_landmarker_full.task"
+curl -L -o models/emotion_enet_b0_8_best_vgaf.onnx "https://raw.githubusercontent.com/sb-ai-lab/EmotiEffLib/main/models/affectnet_emotions/onnx/enet_b0_8_best_vgaf.onnx"
+```
+Or install [Git Bash](https://gitforwindows.org/) and run `bash scripts/fetch_models.sh`.
+
+### 3. Create the Python virtual environment
+
+**macOS / Linux:**
+```bash
+python3.11 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+pip install -r backend/orchestrator/requirements.txt
+deactivate
+```
+
+**Windows (PowerShell):**
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+pip install -r backend/orchestrator/requirements.txt
+deactivate
+```
+
+> **Note for Windows users:** If `Activate.ps1` is blocked, run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` first, or use Command Prompt with `.venv\Scripts\activate`.
+
+**(Optional)** To enable emotion-driven avatar expressions (~200 MB extra for PyTorch + transformers):
+```bash
+source .venv/bin/activate         # macOS/Linux
+# or: .venv\Scripts\activate       (Windows cmd)
+pip install -r backend/orchestrator/requirements-emotion.txt
+deactivate
+```
+
+### 4. Install frontend dependencies
+
+```bash
+cd frontend
+corepack enable
+corepack pnpm install
+cd ..
+```
+
+### 5. Create the environment file
+
+**macOS / Linux:**
+```bash
+echo 'GOOGLE_API_KEY=your_key_here' > .env
+```
+
+**Windows (PowerShell):**
+```powershell
+"GOOGLE_API_KEY=your_key_here" | Out-File -FilePath .env -Encoding utf8
+```
+
+> Use your actual key from [aistudio.google.com/apikey](https://aistudio.google.com/apikey).
+
+### Run (4 terminals)
+
+Open four terminal tabs, all from the repo root. The order matters — start CV pipeline first, wait for it to be ready, then start the rest.
+
+---
+
+**Terminal 1 — CV Pipeline** (MediaPipe computer vision, port `:8000`)
+
+**macOS / Linux:**
+```bash
+source .venv/bin/activate
+export MODELS_DIR="$(pwd)/models"
+uvicorn backend.cv_pipeline.main:app --host 0.0.0.0 --port 8000
+```
+
+**Windows (PowerShell):**
+```powershell
+.venv\Scripts\Activate.ps1
+$env:MODELS_DIR = "$(Get-Location)\models"
+uvicorn backend.cv_pipeline.main:app --host 0.0.0.0 --port 8000
+```
+
+Ready signal: `Uvicorn running on http://0.0.0.0:8000`
+
+---
+
+**Terminal 2 — Orchestrator** (Gemini Live bridge, port `:8001`)
+
+**macOS / Linux:**
+```bash
+source .venv/bin/activate
+export GOOGLE_API_KEY=your_key_here
+export CV_PIPELINE_WS_URL=ws://localhost:8000
+cd backend/orchestrator
+python server.py
+```
+
+**Windows (PowerShell):**
+```powershell
+.venv\Scripts\Activate.ps1
+$env:GOOGLE_API_KEY = "your_key_here"
+$env:CV_PIPELINE_WS_URL = "ws://localhost:8000"
+cd backend/orchestrator
+python server.py
+```
+
+Ready signal: `[Orchestrator] key present` + listening on `:8001`
+
+> If you installed the emotion classifier in step 3, add `export ENABLE_EMOTION=true` (macOS/Linux) or `$env:ENABLE_EMOTION = "true"` (PowerShell).
+
+> **Typing `your_key_here` every time?** Read it from the `.env` file instead:
+> ```bash
+> # macOS/Linux
+> export $(grep -v '^#' .env | xargs)
+> # PowerShell
+> Get-Content .env | ForEach-Object { if ($_ -match '^([^#].*?)=(.*)') { Set-Item "env:$($matches[1])" $matches[2] } }
+> ```
+
+---
+
+**Terminal 3 — Kiosk UI** (Next.js dev server, port `:3000`)
+
+```bash
+cd frontend
+corepack pnpm dev
+```
+
+Ready signal: `▲ Next.js 15.2.6`
+
+---
+
+**Terminal 4 — Camera feed** (optional; only if you aren't using the browser webcam)
+
+If your setup streams frames from a separate camera client (e.g., the PyQt6 desktop client) instead of the browser's `getUserMedia`, you can skip this terminal. The browser-based kiosk sends camera frames through the `useBackendServerUrl` hook automatically — no extra terminal needed.
+
+### Open the kiosk
+
+In **Chrome**, navigate to:
+```
+http://localhost:3000/kiosk
+```
+
+- Chrome asks for **camera + microphone** permission → **Allow**
+- Click **"Konuşmaya Başla"**
+- Talk to Haru — she listens, looks at you, and replies in Turkish with lip-synced speech
+
+> **Why no nginx gateway?** In development mode the frontend connects directly to the orchestrator (port `8001`) and CV pipeline (port `8000`) — no reverse proxy needed. The nginx gateway is a Docker convenience that collapses everything onto one port; you can still use it locally by installing nginx and pointing `deploy/nginx.conf`'s upstreams to `localhost` instead of Docker service names.
+
+### Stopping
+
+Press `Ctrl+C` in each terminal. The venv stays intact — next time just activate and run.
+
+---
+
+## Try it without any backend (avatar preview — Docker or venv)
 
 To preview the avatar and tune lip-sync/expressions with **no Gemini key, no CV models, no Docker build**:
 
+**Docker:**
 ```bash
 docker compose up --build frontend
+```
+
+**venv (no Docker):**
+```bash
+cd frontend
+corepack enable && corepack pnpm install && corepack pnpm dev
 ```
 Then open in Chrome:
 ```
@@ -109,9 +303,20 @@ By default the avatar's expression follows the conversation state (listening / s
 
 This adds **~200 MB** (PyTorch + transformers), so it's off by default.
 
+**Docker:**
 ```bash
 # Bring up the emotion-enabled orchestrator instead of the default one
 docker compose up --build orchestrator-emotion cv-pipeline frontend gateway
+```
+
+**venv (no Docker):**
+```bash
+# Install emotion deps into the existing venv
+source .venv/bin/activate          # or .venv\Scripts\activate on Windows
+pip install -r backend/orchestrator/requirements-emotion.txt
+# Then start the orchestrator with the flag set:
+export ENABLE_EMOTION=true          # or $env:ENABLE_EMOTION = "true" on PowerShell
+cd backend/orchestrator && python server.py
 ```
 
 Then watch the orchestrator logs for:
@@ -150,7 +355,7 @@ Full details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · [backend/orchestra
 
 ## Configuration (key env vars)
 
-Docker Compose auto-loads `.env` from the repo root. All optional — defaults shown.
+Docker Compose auto-loads `.env` from the repo root. When using venvs, `export` each variable in your shell or use a `.env` loader. All optional — defaults shown.
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
@@ -160,25 +365,26 @@ Docker Compose auto-loads `.env` from the repo root. All optional — defaults s
 | `ENABLE_EMOTION` | `false` | Avatar emotion classification (adds ~200 MB) |
 | `NEXT_PUBLIC_AVATAR` | `live2d` | Default avatar renderer (`live2d` or `svg`) |
 | `ORCH_TOKEN` | *(empty)* | Optional bearer token to protect the orchestrator WS |
+| `CV_PIPELINE_WS_URL` | `ws://localhost:8000` | CV pipeline WebSocket address |
+| `MODELS_DIR` | `models` | Path to MediaPipe/ONNX model files |
 
 ---
 
 ## Local development (no Docker for orchestrator/frontend)
 
-For hacking on the orchestrator or frontend without rebuilding Docker on every change:
+For hacking on the orchestrator or frontend without rebuilding Docker on every change, see the full **[Quick Start (venv — no Docker)](#quick-start-python-venv--no-docker)** section above. Quick reference for the three terminals:
 
 ```bash
-# Terminal 1 — CV pipeline (still Docker; needs ./models from Quick Start step 2)
-docker compose up --build cv-pipeline                # :8000
+# Terminal 1 — CV pipeline (:8000)
+source .venv/bin/activate && export MODELS_DIR="$(pwd)/models"
+uvicorn backend.cv_pipeline.main:app --host 0.0.0.0 --port 8000
 
-# Terminal 2 — orchestrator (Python 3.11)
-python3.11 -m venv .venv-orch && source .venv-orch/bin/activate
-pip install -r backend/orchestrator/requirements.txt
-export GOOGLE_API_KEY=your_key_here
-./scripts/start_orchestrator.sh                      # :8001
+# Terminal 2 — orchestrator (:8001)
+source .venv/bin/activate && export GOOGLE_API_KEY=your_key_here
+cd backend/orchestrator && python server.py
 
-# Terminal 3 — kiosk UI (Node 18+ / pnpm via corepack)
-cd frontend && corepack enable && corepack pnpm install && corepack pnpm dev   # :3000/kiosk
+# Terminal 3 — kiosk UI (:3000)
+cd frontend && corepack pnpm dev
 ```
 
 **Verify Gemini in isolation** (writes a Turkish greeting to `smoke_out.wav`):
@@ -211,6 +417,11 @@ cd backend/orchestrator && pytest
 | **cv-pipeline build fails on `COPY models/`** | You skipped `bash scripts/fetch_models.sh`. Run it, then rebuild. |
 | **Frontend build fails on `frozen-lockfile`** | You edited `package.json` without updating the lockfile. Run `corepack pnpm install` in `frontend/` and commit `pnpm-lock.yaml`. |
 | **No audio at all** | Chrome: `chrome://settings/content/microphone` — ensure localhost allowed. Check `GOOGLE_API_KEY` in `.env`. |
+| **venv: `ModuleNotFoundError: No module named 'backend'`** | Set `PYTHONPATH` to the repo root: `export PYTHONPATH="$(pwd)"` (macOS/Linux) or `$env:PYTHONPATH = "$(Get-Location)"` (PowerShell). The orchestrator does this automatically; the CV pipeline may need it if launched from outside the repo root. |
+| **venv: `MODELS_DIR` is empty / MediaPipe can't find models** | Make sure you ran step 2 (`bash scripts/fetch_models.sh`). Verify `ls models/` shows three files. The CV pipeline expects `MODELS_DIR` to point at the `models/` directory. |
+| **venv (Windows): `Activate.ps1` is blocked** | Run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` in an admin PowerShell, then retry. |
+| **venv: `opencv-python-headless` install fails (Linux)** | Install system libraries: `sudo apt-get install -y libgl1 libglib2.0-0`. |
+| **venv: orchestrator can't reach CV pipeline** | Make sure CV pipeline is running on `:8000` before starting orchestrator. Check `CV_PIPELINE_WS_URL` is set to `ws://localhost:8000`. |
 
 ---
 
