@@ -40,6 +40,10 @@ services:
       - FOCUS_LOSS_SECONDS=${FOCUS_LOSS_SECONDS:-5}
       - NUDGE_COOLDOWN_SECONDS=${NUDGE_COOLDOWN_SECONDS:-20}
       - ENABLE_EMOTION=true
+      - SPEAKER_ENABLED=${SPEAKER_ENABLED:-true}
+      - SPEAKER_BARGEIN_ENABLED=${SPEAKER_BARGEIN_ENABLED:-true}
+      - SPEAKER_MODEL_PATH=/srv/models/nemo_en_titanet_small.onnx
+      - SPEAKER_PROFILES_DIR=/srv/profiles
     depends_on:
       - cv-pipeline
     ports:

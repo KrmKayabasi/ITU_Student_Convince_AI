@@ -42,6 +42,11 @@ services:
       # When enabled, the orchestrator emits {"type":"emotion"} on assistant
       # transcripts; the Live2D avatar maps them to expressions. Off by default.
       - ENABLE_EMOTION=${ENABLE_EMOTION:-false}
+      # Speaker verification (TitaNet-Small). Disable with SPEAKER_ENABLED=false.
+      - SPEAKER_ENABLED=${SPEAKER_ENABLED:-true}
+      - SPEAKER_BARGEIN_ENABLED=${SPEAKER_BARGEIN_ENABLED:-true}
+      - SPEAKER_MODEL_PATH=/srv/models/nemo_en_titanet_small.onnx
+      - SPEAKER_PROFILES_DIR=/srv/profiles
     depends_on:
       - cv-pipeline
     ports:

@@ -14,8 +14,11 @@ COPY backend/orchestrator/ ./
 # Shared speaker verification module (used by speaker_manager.py).
 COPY backend/speaker/ /srv/speaker/
 
-# TitaNet-Small ONNX model for speaker embedding extraction.
-COPY models/nemo_en_titanet_small.onnx /srv/models/nemo_en_titanet_small.onnx
+# Model files (TitaNet-Small for speaker verification, etc.).
+# Build with --no-cache if you've just added a new model file, otherwise
+# Docker's layer cache won't pick it up.
+COPY models/ /srv/models/
+RUN mkdir -p /srv/profiles
 
 COPY SYSTEM_PROMPT.md ./SYSTEM_PROMPT.md
 
