@@ -194,6 +194,15 @@ export function useLive2DModel(modelUrl: string = DEFAULT_MODEL_URL): Live2DMode
         app = appAny;
         console.log("[L2D] loading model:", modelUrl);
         const model = (await Live2DModel.from(modelUrl)) as Live2DModelLike;
+        // pixi-live2d-display enables pointer interactivity by default, which
+        // causes the model to automatically track the mouse cursor. Disable it
+        // so head/body tracking is driven exclusively by the CV pipeline.
+        (model as unknown as { interactive: boolean }).interactive = false;
+        // Also disable internal auto-interaction if the library version
+        // exposes this knob (some builds use _autoInteract).
+        const mAny = model as unknown as Record<string, unknown>;
+        if ("autoInteract" in mAny) mAny.autoInteract = false;
+        if ("_autoInteract" in mAny) mAny._autoInteract = false;
         console.log("[L2D] model loaded OK:", (model as unknown as { internalModel?: { coreModel?: unknown } })?.internalModel ? "has coreModel" : "NO coreModel");
         if (cancelled) {
           model.destroy({ children: true });

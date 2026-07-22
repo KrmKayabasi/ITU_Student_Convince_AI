@@ -66,6 +66,7 @@ function Live2DAvatarInner({
           display: "block",
           marginLeft: "auto",
           marginRight: "auto",
+          pointerEvents: "none",
         }}
         aria-label="Live2D danışman"
         role="img"
