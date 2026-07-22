@@ -43,6 +43,7 @@ services:
       - SPEAKER_ENABLED=${SPEAKER_ENABLED:-true}
       - SPEAKER_BARGEIN_ENABLED=${SPEAKER_BARGEIN_ENABLED:-true}
       - SPEAKER_MODEL_PATH=/srv/models/nemo_en_titanet_small.onnx
+      - VAD_MODEL_PATH=/srv/models/silero_vad.onnx
       - SPEAKER_PROFILES_DIR=/srv/profiles
     depends_on:
       - cv-pipeline

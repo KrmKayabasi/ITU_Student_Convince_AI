@@ -29,11 +29,11 @@ logger = logging.getLogger(__name__)
 
 def _resolve_vad_model(model_path: str) -> str:
     """Resolve the Silero VAD model path."""
-    if model_path and os.path.exists(model_path):
+    if model_path:
         return model_path
 
     env_path = os.environ.get("VAD_MODEL_PATH", "")
-    if env_path and os.path.exists(env_path):
+    if env_path:
         return env_path
 
     # Try relative to this file (backend/speaker/ -> ../../)
