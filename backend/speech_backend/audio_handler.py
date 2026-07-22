@@ -17,7 +17,7 @@ from pywebrtc_audio import AudioProcessor
 _SILERO_VAD_SHA256 = "9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6"
 
 class AudioHandler:
-    def __init__(self, sample_rate=16000, channels=1, energy_threshold=1.5, silence_duration=0.8, min_speech_duration=0.3, interruption_mode="both"):
+    def __init__(self, sample_rate=16000, channels=1, energy_threshold=1.5, silence_duration=0.8, min_speech_duration=0.3, interruption_mode="both", speaker_manager=None):
         self.sample_rate = sample_rate
         self.channels = channels
         self.energy_threshold = energy_threshold
@@ -26,6 +26,7 @@ class AudioHandler:
         self.interruption_mode = interruption_mode
         self.audio_queue = queue.Queue()
         self.baseline_energy = 0.005  # Default low baseline
+        self.speaker_manager = speaker_manager  # Optional SpeakerManager for speaker-aware barge-in
 
         # Lazy initialization of WebRTC Audio Processor for thread safety
         self.ap = None
@@ -436,6 +437,34 @@ class AudioHandler:
                         segment = self.vad.front
                         user_audio = np.array(segment.samples, dtype=np.float32)
                         self.vad.pop()
+
+                        # Speaker-aware barge-in: if the interrupting speaker
+                        # IS the enrolled target, suppress the interruption.
+                        if self.speaker_manager is not None and self.speaker_manager.is_enrolled:
+                            try:
+                                import asyncio
+                                loop = asyncio.new_event_loop()
+                                is_match, score, _ = loop.run_until_complete(
+                                    self.speaker_manager.verify(user_audio)
+                                )
+                                loop.close()
+                                if is_match:
+                                    print(
+                                        f"[Speaker] Target speaker verified (score={score:.3f}) "
+                                        f"— suppressing barge-in",
+                                        flush=True,
+                                    )
+                                    return False, None
+                                else:
+                                    print(
+                                        f"[Speaker] Non-target speaker detected (score={score:.3f}) "
+                                        f"— triggering barge-in",
+                                        flush=True,
+                                    )
+                            except Exception:
+                                # If verification fails, fall through to normal barge-in
+                                pass
+
                         return True, user_audio
 
                 print("[VAD] Konuşma tamamlanamadı veya limit aşıldı. Dinlemeye geçiliyor.", flush=True)

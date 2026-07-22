@@ -39,6 +39,20 @@ from config import SERVER_HOST as HOST, SERVER_PORT as PORT, MODEL_ID, QUANTIZAT
 from model_handler import GemmaAudioProcessor
 from tts_handler import OfflineTTSHandler
 
+# Speaker verification (optional — enabled by default, disable with SPEAKER_ENABLED=false)
+_speaker_manager = None
+try:
+    import sys as _sys
+    import os as _os
+    _orchestrator_dir = _os.path.join(_os.path.dirname(__file__), "..", "orchestrator")
+    if _orchestrator_dir not in _sys.path:
+        _sys.path.insert(0, _orchestrator_dir)
+    from speaker_manager import SpeakerManager
+    from speaker_router import create_speaker_router as _create_speaker_router
+    _SPEAKER_AVAILABLE = True
+except ImportError:
+    _SPEAKER_AVAILABLE = False
+
 app = FastAPI(title="Turkish Speech-to-Speech Server (NVIDIA H200)")
 
 # ── Auth ─────────────────────────────────────────────────────────────────────
@@ -64,14 +78,15 @@ def _verify_auth(credentials: HTTPAuthorizationCredentials | None = Depends(_sec
 gemma = None
 tts = None
 asr = None
+speaker_mgr = None
 
 @app.on_event("startup")
 def startup_event():
-    global gemma, tts, asr
+    global gemma, tts, asr, speaker_mgr
     print("=" * 60)
     print("STARTING H200 SPEECH-TO-SPEECH SERVER")
     print("=" * 60)
-    
+
     # Load Gemma 4 on CUDA (unquantized for best quality)
     gemma = GemmaAudioProcessor(
         model_id=MODEL_ID,
@@ -79,7 +94,7 @@ def startup_event():
         device=DEVICE,
         enable_thinking=ENABLE_THINKING
     )
-    
+
     # Load VITS Piper on CUDA/CPU
     tts = OfflineTTSHandler(
         model_id=TTS_MODEL_ID,
@@ -99,12 +114,45 @@ def startup_event():
             "no_repeat_ngram_size": 4
         }
     )
-    
+
+    # Initialize speaker verification (optional, controlled by SPEAKER_ENABLED env)
+    speaker_enabled = os.environ.get("SPEAKER_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
+    if speaker_enabled and _SPEAKER_AVAILABLE:
+        try:
+            speaker_mgr = SpeakerManager(
+                model_path=os.environ.get("SPEAKER_MODEL_PATH", ""),
+                profiles_dir=os.environ.get("SPEAKER_PROFILES_DIR", "profiles"),
+                verify_threshold=float(os.environ.get("SPEAKER_VERIFY_THRESHOLD", "0.45")),
+                enabled=True,
+            )
+            # Initialize synchronously (loads ONNX model + profile DB)
+            import asyncio as _asyncio
+            _loop = _asyncio.new_event_loop()
+            _loop.run_until_complete(speaker_mgr.initialize())
+            _loop.close()
+            # Mount speaker REST endpoints
+            _router = _create_speaker_router(speaker_mgr)
+            app.include_router(_router)
+            print("[Server] Speaker verification enabled (TitaNet-Small)", flush=True)
+        except Exception as exc:
+            print(f"[Server] Speaker verification failed to load: {exc}", flush=True)
+            speaker_mgr = None
+    else:
+        print("[Server] Speaker verification DISABLED", flush=True)
+
     print(f"[Server] All models loaded on {DEVICE} and ready!")
 
 # Conversation history state (sliding window of last 20 turns of text history)
 chat_history = []
 MAX_HISTORY_TURNS = 20
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    global speaker_mgr
+    if speaker_mgr is not None:
+        await speaker_mgr.close()
+        print("[Server] Speaker manager shut down", flush=True)
 
 @app.post("/reset")
 def reset_conversation(_auth=Depends(_verify_auth)):

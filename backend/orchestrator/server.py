@@ -49,6 +49,9 @@ try:
 except Exception:  # pragma: no cover - emotion is optional (heavy deps)
     get_classifier = None  # type: ignore
 
+from speaker_manager import SpeakerManager  # noqa: E402
+from speaker_router import create_speaker_router  # noqa: E402
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("orchestrator")
 
@@ -57,6 +60,42 @@ app = FastAPI(title="İTÜ Convince AI — Realtime Orchestrator")
 _SESSION_RE = re.compile(r"[A-Za-z0-9_.-]{1,64}")
 # session_id -> the currently-connected SessionRunner (one active visitor per id)
 _active: dict[str, "SessionRunner"] = {}
+
+# Shared speaker manager (initialized on startup)
+speaker_manager: SpeakerManager | None = None
+
+
+@app.on_event("startup")
+async def startup_event():
+    global speaker_manager
+    if config.SPEAKER_ENABLED:
+        speaker_manager = SpeakerManager(
+            model_path=config.SPEAKER_MODEL_PATH,
+            profiles_dir=config.SPEAKER_PROFILES_DIR,
+            verify_threshold=config.SPEAKER_VERIFY_THRESHOLD,
+            update_threshold=config.SPEAKER_UPDATE_THRESHOLD,
+            max_stored_embeddings=config.SPEAKER_MAX_STORED_EMBEDDINGS,
+            accumulation_duration_s=config.SPEAKER_ACCUMULATION_DURATION_S,
+            bargein_cooldown_s=config.SPEAKER_BARGEIN_COOLDOWN_S,
+            enabled=config.SPEAKER_ENABLED,
+            bargein_enabled=config.SPEAKER_BARGEIN_ENABLED,
+        )
+        await speaker_manager.initialize()
+        logger.info("Speaker verification enabled (TitaNet-Small)")
+    else:
+        logger.info("Speaker verification DISABLED (SPEAKER_ENABLED=false)")
+
+    # Mount speaker REST API
+    if speaker_manager is not None:
+        speaker_router = create_speaker_router(speaker_manager)
+        app.include_router(speaker_router)
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    global speaker_manager
+    if speaker_manager is not None:
+        await speaker_manager.close()
 
 
 def _valid_session_id(session_id: str) -> bool:
@@ -72,9 +111,10 @@ def _authorized(token: str | None) -> bool:
 class SessionRunner:
     """Owns one browser WebSocket, its Gemini bridge, and the CV injector."""
 
-    def __init__(self, websocket: WebSocket, session_id: str) -> None:
+    def __init__(self, websocket: WebSocket, session_id: str, speaker_mgr: SpeakerManager | None = None) -> None:
         self.ws = websocket
         self.session_id = session_id
+        self.speaker_mgr = speaker_mgr
         self.out: asyncio.Queue = asyncio.Queue(maxsize=512)
         self.bridge = GeminiLiveBridge(
             api_key=config.GOOGLE_API_KEY,
@@ -106,6 +146,7 @@ class SessionRunner:
         self._emotion_task: asyncio.Task | None = None
         self._emotion_started = False
         self._assistant_audio_started = False
+        self._ai_speaking = False  # tracks whether AI is currently outputting audio
 
     # ── outbound helpers (only the sender task touches the socket) ────────────
     async def send_json(self, obj: dict) -> None:
@@ -131,6 +172,19 @@ class SessionRunner:
             data = msg.get("bytes")
             if data is not None:
                 await self.bridge.send_audio(data)
+                # Speaker verification (non-blocking, async)
+                if self.speaker_mgr is not None:
+                    try:
+                        speaker_event = await self.speaker_mgr.process_audio_chunk(data)
+                        if speaker_event is not None:
+                            await self.send_json(speaker_event)
+                        # Check for speaker-aware barge-in during AI speech
+                        if self._ai_speaking:
+                            bargein_event = self.speaker_mgr.check_bargein(is_ai_speaking=True)
+                            if bargein_event is not None:
+                                await self.send_json(bargein_event)
+                    except Exception:
+                        logger.debug("speaker process_audio_chunk failed", exc_info=True)
                 continue
             text = msg.get("text")
             if text:
@@ -160,6 +214,7 @@ class SessionRunner:
                     # local barge-in from the next legitimate response.
                     await self.send_json({"type": "assistant_audio_start"})
                     self._assistant_audio_started = True
+                    self._ai_speaking = True
                 await self.send_bytes(ev["pcm16"])
             elif et == "output_transcript":
                 await self.send_json({"type": "transcript", "role": "assistant", "text": ev["text"]})
@@ -168,10 +223,12 @@ class SessionRunner:
                 await self.send_json({"type": "transcript", "role": "user", "text": ev["text"]})
             elif et == "interrupted":
                 self._assistant_audio_started = False
+                self._ai_speaking = False
                 self._reset_emotion("neutral")
                 await self.send_json({"type": "interrupt"})
             elif et == "turn_complete":
                 self._assistant_audio_started = False
+                self._ai_speaking = False
                 self._reset_emotion("neutral")
                 await self.send_json({"type": "turn_complete"})
             elif et == "tool_call":
@@ -307,7 +364,7 @@ async def realtime(websocket: WebSocket, session_id: str = Query(...), token: st
     if old is not None:
         await old.close()
 
-    runner = SessionRunner(websocket, session_id)
+    runner = SessionRunner(websocket, session_id, speaker_mgr=speaker_manager)
     _active[session_id] = runner
     logger.info("realtime connected: %s", session_id)
     try:

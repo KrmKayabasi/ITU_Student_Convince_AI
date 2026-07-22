@@ -1,0 +1,17 @@
+{
+  "optimal_threshold": 0.8320000000000001,
+  "eer": 0.0,
+  "eer_threshold": 0.8320000000000001,
+  "far_at_1percent_frr": 0.0,
+  "frr_at_1percent_far": 1.0,
+  "target_mean": 0.95190269947052,
+  "target_std": 0.03168724954257712,
+  "nontarget_mean": 0.1922991265731933,
+  "nontarget_std": 0.1922991265731933,
+  "separation_dprime": 3.9430629620831743,
+  "recommended_threshold": 0.8320000000000001,
+  "recommended_far": 0.0,
+  "recommended_frr": 0.0,
+  "num_target_trials": 10,
+  "num_nontarget_trials": 20
+}
