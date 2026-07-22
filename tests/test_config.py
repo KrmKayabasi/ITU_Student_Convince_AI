@@ -30,6 +30,11 @@ class TestConfigDefaults:
         from backend.cv_pipeline import config
         assert 0.0 < config.FOCUS_EYE_CONTACT_THRESHOLD < 1.0
 
+    def test_tracking_defaults_are_positive_and_five_hz(self):
+        from backend.cv_pipeline import config
+        assert config.TRACKING_EMIT_INTERVAL_SECONDS == 0.2
+        assert config.TRACKING_STALE_AFTER_SECONDS > 0
+
     def test_ema_alpha_between_zero_and_one(self):
         from backend.cv_pipeline import config
         assert 0.0 < config.EMA_ALPHA < 1.0

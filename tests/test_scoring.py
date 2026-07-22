@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import time
-import pytest
 import numpy as np
 from backend.cv_pipeline.scoring import (
     update_session,
     build_initial_profile,
     build_focus_payload,
+    build_tracking_payload,
     build_debug_payload,
     _score_components,
     _lean_confidence,
@@ -45,7 +45,6 @@ class TestUpdateSession:
         assert s.state is SessionState.ACTIVE
 
     def test_focus_starts_when_eye_contact_above_threshold(self):
-        import time
         s = SessionData(session_id="test")
         s.state = SessionState.ACTIVE
         raw = RawSignals(face_present=True, eye_contact=0.9)
@@ -87,8 +86,12 @@ class TestScoreComponents:
         for _ in range(10):
             s.lean_history.append(0.1)
             s.eye_history.append(0.8)
-        raw = RawSignals(spine_ratio=0.9, shoulder_tilt=0.02,
-                         arms_crossed=False, emotion_label="neutral")
+        raw = RawSignals(
+            spine_ratio=0.9,
+            shoulder_tilt=0.02,
+            arms_crossed=False,
+            emotion_label="neutral",
+        )
         result = _score_components(s, raw)
         assert len(result) == 5
         attention, openness, energy, delta_lean, avg_eye = result
@@ -100,8 +103,12 @@ class TestScoreComponents:
         for _ in range(30):
             s.lean_history.append(0.1)
             s.eye_history.append(0.8)
-        raw = RawSignals(spine_ratio=0.9, shoulder_tilt=0.02,
-                         arms_crossed=False, emotion_label="neutral")
+        raw = RawSignals(
+            spine_ratio=0.9,
+            shoulder_tilt=0.02,
+            arms_crossed=False,
+            emotion_label="neutral",
+        )
         attn, opn, en, dl, ae = _score_components(s, raw)
         for val, name in [(attn, "attention"), (opn, "openness"), (en, "energy")]:
             assert 0.0 <= val <= 1.0, f"{name}={val} out of [0,1]"
@@ -121,7 +128,15 @@ class TestBuildProfile:
     def test_profile_has_required_keys(self, sample_session, sample_raw_signals):
         sample_session.last_raw = sample_raw_signals
         profile = build_initial_profile(sample_session)
-        for key in ("session_id", "ts", "state", "person", "signals", "scores", "schema_version"):
+        for key in (
+            "session_id",
+            "ts",
+            "state",
+            "person",
+            "signals",
+            "scores",
+            "schema_version",
+        ):
             assert key in profile, f"Missing key: {key}"
 
     def test_profile_score_keys(self, sample_session, sample_raw_signals):
@@ -146,6 +161,104 @@ class TestBuildFocusPayload:
         assert "is_focused" in payload
         assert "focus_time" in payload
         assert isinstance(payload["is_focused"], bool)
+
+    def test_focus_payload_schema_remains_unchanged(self, sample_session):
+        assert set(build_focus_payload(sample_session)) == {
+            "session_id",
+            "ts",
+            "is_focused",
+            "focus_time",
+        }
+
+
+class TestBuildTrackingPayload:
+    def test_present_face_includes_normalized_position(self):
+        session = SessionData(session_id="tracking-present")
+        session.state = SessionState.ACTIVE
+        session.last_observation_at = 100.0
+        session.last_raw = RawSignals(
+            face_present=True,
+            face_center_x=0.4,
+            face_center_y=0.55,
+            face_bbox_width=0.4,
+            face_bbox_height=0.5,
+            observation_ts=100.0,
+        )
+
+        payload = build_tracking_payload(session, now=100.2)
+        emitted_at = payload.pop("emitted_at")
+
+        assert payload == {
+            "session_id": "tracking-present",
+            "state": "ACTIVE",
+            "face_present": True,
+            "presence_state": "present",
+            "face_center_x": 0.4,
+            "face_center_y": 0.55,
+            "face_bbox_width": 0.4,
+            "face_bbox_height": 0.5,
+            "observation_ts": 100.0,
+            "frame_age_seconds": 0.2,
+        }
+        assert isinstance(emitted_at, float)
+
+    def test_fresh_no_face_observation_is_absent(self):
+        session = SessionData(session_id="tracking-absent")
+        update_session(session, RawSignals(face_present=False, observation_ts=100.0))
+
+        payload = build_tracking_payload(session, now=100.1)
+
+        assert payload["face_present"] is False
+        assert payload["presence_state"] == "absent"
+        assert payload["face_center_x"] is None
+        assert payload["face_center_y"] is None
+        assert payload["face_bbox_width"] is None
+        assert payload["face_bbox_height"] is None
+
+    def test_pose_only_observation_is_unknown_not_absent(self):
+        session = SessionData(session_id="tracking-turned-face")
+        update_session(
+            session,
+            RawSignals(
+                face_present=False,
+                person_present=True,
+                observation_ts=100.0,
+            ),
+        )
+
+        payload = build_tracking_payload(session, now=100.1)
+
+        assert payload["face_present"] is None
+        assert payload["presence_state"] == "unknown"
+
+    def test_stale_observation_is_unknown_not_absent(self, monkeypatch):
+        from backend.cv_pipeline import config
+
+        monkeypatch.setattr(config, "TRACKING_STALE_AFTER_SECONDS", 0.5)
+        session = SessionData(session_id="tracking-stale")
+        session.last_observation_at = 100.0
+        session.last_raw = RawSignals(face_present=False, observation_ts=100.0)
+
+        payload = build_tracking_payload(session, now=101.0)
+
+        assert payload["face_present"] is None
+        assert payload["presence_state"] == "unknown"
+        assert payload["observation_ts"] == 100.0
+        assert payload["frame_age_seconds"] == 1.0
+
+    def test_missing_or_invalidated_observation_is_unknown(self):
+        session = SessionData(session_id="tracking-disconnected")
+        session.last_observation_at = 99.0
+        session.last_raw = RawSignals(face_present=True, face_center_x=0.5)
+        session.invalidate_observation()
+
+        payload = build_tracking_payload(session, now=100.0)
+
+        assert payload["face_present"] is None
+        assert payload["presence_state"] == "unknown"
+        assert payload["observation_ts"] == 99.0
+        assert payload["frame_age_seconds"] == 1.0
+        assert payload["face_center_x"] is None
 
 
 class TestBuildDebugPayload:

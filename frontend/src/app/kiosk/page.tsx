@@ -95,6 +95,7 @@ function ProductionKiosk({ avatarMode }: { avatarMode: AvatarMode }) {
         seekAttentionNonce={session.seekAttentionNonce}
         avatarMode={avatarMode}
         emotion={session.emotion}
+        facePosition={avatarMode === "live2d" ? cv.facePosition : null}
       />
       <SubtitlePanel
         assistantText={session.assistantText}

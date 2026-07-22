@@ -34,6 +34,7 @@ import type { FaceState } from "./faceState";
 import type { AmplitudeSource } from "./amplitude";
 import type { Live2DModelLike } from "./useLive2DModel";
 import { emotionToDeltas, type ExpressionDeltas } from "./live2dExpressions";
+import type { FacePosition } from "./useCvSignals";
 
 const SEEK_MS = 2600;
 
@@ -42,6 +43,7 @@ export interface Live2DRigProps {
   amplitude: AmplitudeSource;
   seekAttentionNonce: number;
   emotion: string;
+  facePosition: FacePosition | null;
 }
 
 // Live2D param IDs (Cubism 4 standard).
@@ -71,6 +73,7 @@ export function useLive2DRig(
   const stateRef = useRef<FaceState>(props.state);
   const ampRef = useRef<AmplitudeSource>(props.amplitude);
   const emotionRef = useRef(props.emotion);
+  const facePositionRef = useRef(props.facePosition);
   const seekUntilRef = useRef(0);
   const lastNonceRef = useRef(props.seekAttentionNonce);
 
@@ -83,6 +86,9 @@ export function useLive2DRig(
   useEffect(() => {
     emotionRef.current = props.emotion;
   }, [props.emotion]);
+  useEffect(() => {
+    facePositionRef.current = props.facePosition;
+  }, [props.facePosition]);
   useEffect(() => {
     if (props.seekAttentionNonce !== lastNonceRef.current) {
       lastNonceRef.current = props.seekAttentionNonce;
@@ -248,6 +254,26 @@ export function useLive2DRig(
           tCheek = 0.05;
           tEyeOpen = 0.85;
           break;
+      }
+
+      // Follow the primary visitor while preserving state gestures and emotion.
+      // A dead zone prevents detector noise around the camera center from
+      // making the eyes twitch. Missing/stale tracking naturally falls back to
+      // the state-driven targets above.
+      const trackedFace = facePositionRef.current;
+      if (trackedFace && st !== "attract") {
+        const deadZone = (value: number, radius: number) =>
+          Math.abs(value) <= radius
+            ? 0
+            : Math.sign(value) * (Math.abs(value) - radius) / (1 - radius);
+        // getUserMedia frames are unmirrored while the visitor-facing preview
+        // is mirrored, so invert X to follow the visitor's physical direction.
+        const dx = clamp(deadZone(-(trackedFace.x - 0.5) / 0.5, 0.08), -1, 1);
+        const dy = clamp(deadZone((trackedFace.y - 0.5) / 0.5, 0.08), -1, 1);
+        tGazeX = dx * 0.7;
+        tGazeY = -dy * 0.55;
+        tAngleX += dx * 10;
+        tAngleY += -dy * 7;
       }
 
       // ── nod gesture (listening) ──

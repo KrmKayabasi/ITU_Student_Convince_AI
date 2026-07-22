@@ -14,8 +14,6 @@ from __future__ import annotations
 
 import time
 
-import numpy as np
-
 from backend.cv_pipeline import config
 from backend.cv_pipeline.session import RawSignals, SessionData, SessionState
 
@@ -74,7 +72,10 @@ def _emotion_confidence(emotion_scores: dict) -> float:
 def _update_focus(session: SessionData, raw: RawSignals, now: float) -> None:
     """Odaklanma, her karede guncellenir (T-focus): dikkat dagilinca aninda
     0'a sifirlanir, kesintisiz surdukce focus_time artar."""
-    focused = bool(raw.face_present) and (raw.eye_contact or 0.0) >= config.FOCUS_EYE_CONTACT_THRESHOLD
+    focused = (
+        bool(raw.face_present)
+        and (raw.eye_contact or 0.0) >= config.FOCUS_EYE_CONTACT_THRESHOLD
+    )
     if focused:
         if session.focus_streak_started_at is None:
             session.focus_streak_started_at = now
@@ -85,7 +86,11 @@ def _update_focus(session: SessionData, raw: RawSignals, now: float) -> None:
     session.is_focused = focused
 
 
-def update_session(session: SessionData, raw: RawSignals) -> None:
+def update_session(
+    session: SessionData,
+    raw: RawSignals,
+    observation_monotonic: float | None = None,
+) -> None:
     """Tek bir islenmis kareden gelen ham sinyali oturum durumuna isler.
 
     State machine gecisleri (IDLE / CALIBRATING / ACTIVE), baseline/ring-buffer
@@ -96,6 +101,15 @@ def update_session(session: SessionData, raw: RawSignals) -> None:
     """
     now = time.time()
     session.last_raw = raw
+    session.last_observation_at = (
+        raw.observation_ts if raw.observation_ts is not None else now
+    )
+    # SessionData predates tracking. Keep its serializable wall timestamp while
+    # using a monotonic capture time for freshness decisions.
+    session.last_observation_monotonic = (
+        observation_monotonic if observation_monotonic is not None else time.monotonic()
+    )
+    session.observation_invalidated = False
 
     # NOT: _update_focus, reset_for_new_person/reset_to_idle SONRASINDA
     # cagrilir; aksi halde bu resetler az once hesaplanan focus durumunu
@@ -133,18 +147,31 @@ def update_session(session: SessionData, raw: RawSignals) -> None:
     if raw.eye_contact is not None:
         session.eye_history.append(raw.eye_contact)
 
-    if not session.profile_sent and len(session.eye_history) >= config.PROFILE_MIN_SAMPLES:
+    if (
+        not session.profile_sent
+        and len(session.eye_history) >= config.PROFILE_MIN_SAMPLES
+    ):
         session.pending_profile = build_initial_profile(session)
         session.profile_sent = True
 
 
-def _score_components(session: SessionData, raw: RawSignals) -> tuple[float, float, float, float, float]:
+def _score_components(
+    session: SessionData, raw: RawSignals
+) -> tuple[float, float, float, float, float]:
     """Anlik (attention, openness, energy) skoru + ara degerler."""
-    smoothed_lean = float(sum(session.lean_history) / len(session.lean_history)) if session.lean_history else 0.0
+    smoothed_lean = (
+        float(sum(session.lean_history) / len(session.lean_history))
+        if session.lean_history
+        else 0.0
+    )
     baseline = session.baseline_lean if session.baseline_lean is not None else 0.0
     delta_lean = smoothed_lean - baseline
 
-    avg_eye_contact = float(sum(session.eye_history) / len(session.eye_history)) if session.eye_history else 0.5
+    avg_eye_contact = (
+        float(sum(session.eye_history) / len(session.eye_history))
+        if session.eye_history
+        else 0.5
+    )
 
     spine_ratio = raw.spine_ratio if raw.spine_ratio is not None else 0.75
     spine_score = 1.0 if spine_ratio > config.SPINE_UPRIGHT_THRESHOLD else 0.5
@@ -164,7 +191,8 @@ def _score_components(session: SessionData, raw: RawSignals) -> tuple[float, flo
         + lean_score * 0.20
         + emotion_energy * 0.20
         + spine_score * 0.25
-        + (0.0 if raw.arms_crossed else 1.0 if raw.arms_crossed is not None else 0.5) * 0.10
+        + (0.0 if raw.arms_crossed else 1.0 if raw.arms_crossed is not None else 0.5)
+        * 0.10
     )
     energy = (
         emotion_energy * 0.50
@@ -179,7 +207,9 @@ def build_initial_profile(session: SessionData) -> dict:
     """Kisi basina TEK SEFERLIK cagrilir: yeterli veri toplanir toplanmaz
     zengin profili uretir (/profile)."""
     raw = session.last_raw
-    attention, openness, energy, delta_lean, avg_eye_contact = _score_components(session, raw)
+    attention, openness, energy, delta_lean, avg_eye_contact = _score_components(
+        session, raw
+    )
 
     arms_valid = raw.arms_crossed is not None
 
@@ -233,13 +263,73 @@ def build_focus_payload(session: SessionData) -> dict:
     }
 
 
+def build_tracking_payload(
+    session: SessionData,
+    now: float | None = None,
+    now_monotonic: float | None = None,
+) -> dict:
+    """Secilen yuzun normalize konumunu ve gozlemin tazeligiyle birlikte doner.
+
+    face_present yalnizca taze bir islenmis kare icin bool'dur. Henuz gozlem
+    yoksa veya son gozlem bayatsa None donerek stream kaybini yuz yoklugundan
+    ayirir.
+    """
+    observation_ts = session.last_observation_at
+    observation_monotonic = getattr(session, "last_observation_monotonic", None)
+    if now is not None or observation_monotonic is None:
+        wall_now = time.time() if now is None else now
+        frame_age = (
+            None if observation_ts is None else max(0.0, wall_now - observation_ts)
+        )
+    else:
+        monotonic_now = time.monotonic() if now_monotonic is None else now_monotonic
+        frame_age = max(0.0, monotonic_now - observation_monotonic)
+    fresh = (
+        not session.observation_invalidated
+        and frame_age is not None
+        and frame_age <= config.TRACKING_STALE_AFTER_SECONDS
+    )
+    raw = session.last_raw
+
+    if not fresh:
+        face_present = None
+        presence_state = "unknown"
+    elif raw.face_present:
+        face_present = True
+        presence_state = "present"
+    elif raw.person_present:
+        # A body with a temporarily undetected/turned face is still a visitor.
+        face_present = None
+        presence_state = "unknown"
+    else:
+        face_present = False
+        presence_state = "absent"
+
+    has_position = presence_state == "present"
+    return {
+        "session_id": session.session_id,
+        "state": session.state.value,
+        "face_present": face_present,
+        "presence_state": presence_state,
+        "face_center_x": raw.face_center_x if has_position else None,
+        "face_center_y": raw.face_center_y if has_position else None,
+        "face_bbox_width": raw.face_bbox_width if has_position else None,
+        "face_bbox_height": raw.face_bbox_height if has_position else None,
+        "observation_ts": observation_ts,
+        "frame_age_seconds": round(frame_age, 3) if frame_age is not None else None,
+        "emitted_at": time.time(),
+    }
+
+
 def build_debug_payload(session: SessionData) -> dict:
     """SADECE gelistirme/test amacli (/debug): /profile'in aksine TEK SEFERLIK
     degil, her cagrida session.last_raw'dan anlik tum ham + turetilmis
     degerleri doner. Uretim kontratinin (/profile, /focus) bir parcasi
     DEGILDIR; canli kamera testinde olculen degerleri dogrulamak icindir."""
     raw = session.last_raw
-    attention, openness, energy, delta_lean, avg_eye_contact = _score_components(session, raw)
+    attention, openness, energy, delta_lean, avg_eye_contact = _score_components(
+        session, raw
+    )
     return {
         "session_id": session.session_id,
         "ts": time.time(),
@@ -248,6 +338,11 @@ def build_debug_payload(session: SessionData) -> dict:
         "focus_time": round(session.focus_time, 2),
         "raw": {
             "face_present": raw.face_present,
+            "face_center_x": raw.face_center_x,
+            "face_center_y": raw.face_center_y,
+            "face_bbox_width": raw.face_bbox_width,
+            "face_bbox_height": raw.face_bbox_height,
+            "observation_ts": session.last_observation_at,
             "lean": raw.lean,
             "eye_contact": raw.eye_contact,
             "head_yaw_deg": raw.head_yaw_deg,
@@ -259,7 +354,9 @@ def build_debug_payload(session: SessionData) -> dict:
         },
         "smoothed": {
             "delta_lean": round(delta_lean, 4),
-            "baseline_lean": round(session.baseline_lean, 4) if session.baseline_lean is not None else None,
+            "baseline_lean": round(session.baseline_lean, 4)
+            if session.baseline_lean is not None
+            else None,
             "avg_eye_contact": round(avg_eye_contact, 4),
         },
         "live_score_preview": {

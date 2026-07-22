@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { AdvisorFace } from "./AdvisorFace";
 import type { FaceState } from "./faceState";
 import type { AmplitudeSource } from "./amplitude";
+import type { FacePosition } from "./useCvSignals";
 
 // Live2D avatar loads only on the client — WebGL + the Cubism Core script are
 // browser-only, and we don't want to pull pixi.js into the SSR bundle.
@@ -26,6 +27,7 @@ interface FaceStageProps {
   avatarMode?: AvatarMode;
   /** Latest emotion label (go_emotions) — drives Live2D expressions. */
   emotion?: string;
+  facePosition?: FacePosition | null;
 }
 
 const RING: Record<FaceState, string> = {
@@ -43,6 +45,7 @@ export const FaceStage = memo(function FaceStage({
   seekAttentionNonce,
   avatarMode = "svg",
   emotion = "neutral",
+  facePosition = null,
 }: FaceStageProps) {
   const ring = RING[faceState];
   return (
@@ -82,6 +85,7 @@ export const FaceStage = memo(function FaceStage({
             amplitude={amplitude}
             seekAttentionNonce={seekAttentionNonce}
             emotion={emotion}
+            facePosition={facePosition}
           />
         ) : (
           <AdvisorFace

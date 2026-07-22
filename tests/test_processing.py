@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import threading
 import time
+from types import SimpleNamespace
 import pytest
 import numpy as np
-from backend.cv_pipeline.processing import FrameSlot, crop_from_bbox
+from backend.cv_pipeline import processing
+from backend.cv_pipeline.processing import FrameSlot, SignalExtractor, crop_from_bbox
 
 
 class TestFrameSlot:
@@ -117,3 +119,44 @@ class TestCropFromBBox:
         assert crop is not None
         # The resulting square should include replicated border pixels
         assert crop.shape[0] == crop.shape[1]
+
+
+class TestSignalExtractorTracking:
+    def test_selected_face_bbox_populates_normalized_tracking_fields(self, monkeypatch):
+        face = SimpleNamespace(
+            bbox=(0.2, 0.3, 0.6, 0.8),
+            blendshapes={},
+            head_pose=SimpleNamespace(pitch_deg=0.0),
+        )
+        extractor = SignalExtractor.__new__(SignalExtractor)
+        extractor._timestamp_counter = 0
+        extractor._previous_face_center = None
+        extractor._face = SimpleNamespace(detect=lambda image, ts: [face])
+        extractor._pose = SimpleNamespace(detect=lambda image, ts: [])
+        extractor._emotion_worker = SimpleNamespace(
+            submit=lambda crop: None,
+            latest=lambda: (None, {}),
+        )
+
+        monkeypatch.setattr(
+            processing,
+            "select_primary_person",
+            lambda faces, poses, previous: (face, None),
+        )
+        monkeypatch.setattr(
+            processing,
+            "compute_eye_contact",
+            lambda blendshapes, head_pose: SimpleNamespace(
+                eye_contact=0.8,
+                head_yaw_deg=0.0,
+            ),
+        )
+
+        raw = extractor.extract(np.zeros((100, 200, 3), dtype=np.uint8))
+
+        assert raw.face_present is True
+        assert raw.face_center_x == pytest.approx(0.4)
+        assert raw.face_center_y == pytest.approx(0.55)
+        assert raw.face_bbox_width == pytest.approx(0.4)
+        assert raw.face_bbox_height == pytest.approx(0.5)
+        assert raw.observation_ts is not None

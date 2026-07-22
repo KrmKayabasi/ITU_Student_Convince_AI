@@ -17,12 +17,14 @@ import { useLive2DModel } from "./useLive2DModel";
 import { useLive2DRig } from "./useLive2DRig";
 import type { FaceState } from "./faceState";
 import type { AmplitudeSource } from "./amplitude";
+import type { FacePosition } from "./useCvSignals";
 
 export interface Live2DAvatarProps {
   state: FaceState;
   amplitude: AmplitudeSource;
   seekAttentionNonce: number;
   emotion?: string;
+  facePosition?: FacePosition | null;
   /** Optional model URL override (defaults to the bundled Haru sample). */
   modelUrl?: string;
   className?: string;
@@ -33,6 +35,7 @@ function Live2DAvatarInner({
   amplitude,
   seekAttentionNonce,
   emotion = "neutral",
+  facePosition = null,
   modelUrl,
   className,
 }: Live2DAvatarProps) {
@@ -43,6 +46,7 @@ function Live2DAvatarInner({
     amplitude,
     seekAttentionNonce,
     emotion,
+    facePosition,
   });
 
   return (
