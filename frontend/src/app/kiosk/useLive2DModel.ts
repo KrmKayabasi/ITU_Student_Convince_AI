@@ -219,18 +219,18 @@ export function useLive2DModel(modelUrl: string = DEFAULT_MODEL_URL): Live2DMode
             "| internal.w/h", mAny.internalModel?.width, mAny.internalModel?.height);
           // Face-focused framing: zoom in so the face + upper torso fill the
           // frame (like the SVG Elif portrait), cropping the lower body. We
-          // scale the model so its native height is ~1.55x the canvas height,
+          // scale the model so its native height is ~1.72x the canvas height,
           // then anchor near the face and shift up so the head sits centered.
           const modelH = mAny.internalModel?.originalHeight || mAny.height || h;
-          const scale = (h * 1.55) / modelH;
+          const scale = (h * 1.72) / modelH;
           model.scale.set(scale);
           // Anchor at (0.5, ~0.32) — roughly the face center on most Cubism
           // models (head occupies the upper third). This is the pivot the
           // position offset is measured from.
           model.anchor.set(0.5, 0.32);
-          // Shift so the face lands slightly above canvas center — natural
-          // portrait framing with a little headroom.
-          model.position.set(w / 2, h * 0.42);
+          // Keep the tighter upper-body crop while leaving enough headroom for
+          // the full face.
+          model.position.set(w / 2, h * 0.47);
         };
         fit();
         resizeObs = new ResizeObserver(fit);
