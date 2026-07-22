@@ -6,17 +6,17 @@ voice activity detection (Silero VAD), audio capture utilities,
 and threshold calibration.
 """
 
-from backend.speaker.speaker_engine import (
+from .speaker_engine import (
     SpeakerEmbeddingEngine,
     SpeakerDatabase,
     SpeakerProfile,
 )
-from backend.speaker.vad_engine import (
+from .vad_engine import (
     VADEngine,
     VADConfig,
     SpeechSegment,
 )
-from backend.speaker.audio_capture import (
+from .audio_capture import (
     AudioCapture,
     AudioConfig,
     SimulatedAudioCapture,

@@ -23,13 +23,23 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import numpy as np
 
-from backend.speaker.speaker_engine import SpeakerEmbeddingEngine, SpeakerDatabase
+# Resolve the shared speaker module. In local dev it lives at ../speaker
+# (relative to this file); in Docker it lives at /srv/speaker.  Add the
+# resolved path so the import works in both environments.
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_SPEAKER_DIR = os.path.join(_HERE, "..", "speaker")
+if os.path.isdir(_SPEAKER_DIR):
+    sys.path.insert(0, os.path.abspath(_SPEAKER_DIR))
+
+from speaker_engine import SpeakerEmbeddingEngine, SpeakerDatabase
 
 logger = logging.getLogger("orchestrator.speaker")
 
