@@ -31,16 +31,16 @@ def _resolve_model_path(model_path: str = "") -> str:
     Resolve the speaker embedding model path.
 
     Checks (in order):
-    1. Explicitly provided path (if not empty and exists)
-    2. SPEAKER_MODEL_PATH environment variable
+    1. Explicitly provided path (if not empty)
+    2. SPEAKER_MODEL_PATH environment variable (unconditional — Docker sets this)
     3. models/nemo_en_titanet_small.onnx relative to project root
     4. models/nemo_en_titanet_small.onnx relative to cwd
     """
-    if model_path and os.path.exists(model_path):
+    if model_path:
         return model_path
 
     env_path = os.environ.get("SPEAKER_MODEL_PATH", "")
-    if env_path and os.path.exists(env_path):
+    if env_path:
         return env_path
 
     # Try relative to this file's location (backend/speaker/ -> ../../)
