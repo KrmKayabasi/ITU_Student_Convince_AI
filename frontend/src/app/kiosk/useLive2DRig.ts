@@ -124,10 +124,6 @@ export function useLive2DRig(
     };
     let blinkStart = -1;
     let nextBlink = performance.now() + 1800;
-    let lookX = 0;
-    let lookY = 0;
-    let lookUntil = 0;
-    let nextLook = performance.now() + 4000;
     let nodStart = -1;
     let nextNod = performance.now() + 5000;
     let last = performance.now();
@@ -198,16 +194,9 @@ export function useLive2DRig(
           tEyeSmile = 0.3;
           tAngleZ = 3 * Math.sin(0.31 * t) + 1 * Math.sin(0.83 * t);
           tBodyX = 2 * Math.sin(0.21 * t);
-          if (now > nextLook) {
-            lookX = Math.random() * 0.4 - 0.2;
-            lookY = Math.random() * 0.2 - 0.1;
-            lookUntil = now + 1600;
-            nextLook = now + 6000 + Math.random() * 4000;
-          }
-          if (now < lookUntil) {
-            tGazeX = lookX;
-            tGazeY = lookY;
-          }
+          // Face tracking (below) drives gaze + head angles when a face is
+          // detected, overriding the static targets here. When no face is
+          // present, the character stays centered with a gentle idle sway.
           break;
         case "connecting":
           tSmile = 0.2;
@@ -256,12 +245,12 @@ export function useLive2DRig(
           break;
       }
 
-      // Follow the primary visitor while preserving state gestures and emotion.
+      // Follow the primary visitor's face from the CV pipeline in EVERY state.
       // A dead zone prevents detector noise around the camera center from
-      // making the eyes twitch. Missing/stale tracking naturally falls back to
-      // the state-driven targets above.
+      // making the eyes twitch. When tracking is unavailable, the state-driven
+      // targets above provide the fallback pose.
       const trackedFace = facePositionRef.current;
-      if (trackedFace && st !== "attract") {
+      if (trackedFace) {
         const deadZone = (value: number, radius: number) =>
           Math.abs(value) <= radius
             ? 0
