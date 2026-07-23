@@ -16,11 +16,14 @@ export interface FacePosition {
   height: number;
 }
 
+export type CvSessionState = "IDLE" | "CALIBRATING" | "ACTIVE" | "unknown";
+
 export interface CvSignals {
   isFocused: boolean;
   focusTime: number;
   profile: CvProfile | null;
   presenceState: "present" | "absent" | "unknown";
+  sessionState: CvSessionState;
   facePosition: FacePosition | null;
   start: (sessionId: string) => void;
   stop: () => void;
@@ -32,6 +35,7 @@ export function useCvSignals(): CvSignals {
   const [profile, setProfile] = useState<CvProfile | null>(null);
   const [presenceState, setPresenceState] =
     useState<CvSignals["presenceState"]>("unknown");
+  const [sessionState, setSessionState] = useState<CvSessionState>("unknown");
   const [facePosition, setFacePosition] = useState<FacePosition | null>(null);
 
   const focusWsRef = useRef<WebSocket | null>(null);
@@ -54,6 +58,7 @@ export function useCvSignals(): CvSignals {
     setFocusTime(0);
     setProfile(null);
     setPresenceState("unknown");
+    setSessionState("unknown");
     setFacePosition(null);
   }, []);
 
@@ -120,6 +125,12 @@ export function useCvSignals(): CvSignals {
         if (!current() || trackingWsRef.current !== ws) return;
         try {
           const payload = JSON.parse(e.data);
+          const state = payload.state;
+          setSessionState(
+            state === "IDLE" || state === "CALIBRATING" || state === "ACTIVE"
+              ? state
+              : "unknown"
+          );
           const presence = payload.presence_state;
           if (presence !== "present" && presence !== "absent") {
             setPresenceState("unknown");
@@ -148,6 +159,7 @@ export function useCvSignals(): CvSignals {
         } catch {
           if (!current() || trackingWsRef.current !== ws) return;
           setPresenceState("unknown");
+          setSessionState("unknown");
           setFacePosition(null);
         }
       };
@@ -155,12 +167,14 @@ export function useCvSignals(): CvSignals {
         if (!current() || trackingWsRef.current !== ws) return;
         trackingWsRef.current = null;
         setPresenceState("unknown");
+        setSessionState("unknown");
         setFacePosition(null);
         scheduleReconnect(connectTracking, 1000);
       };
       ws.onerror = () => {
         if (!current() || trackingWsRef.current !== ws) return;
         setPresenceState("unknown");
+        setSessionState("unknown");
         setFacePosition(null);
         try { ws.close(); } catch {}
       };
@@ -178,6 +192,7 @@ export function useCvSignals(): CvSignals {
     focusTime,
     profile,
     presenceState,
+    sessionState,
     facePosition,
     start,
     stop,

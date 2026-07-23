@@ -42,6 +42,8 @@ function newSessionId(): string {
   return `kiosk-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 }
 
+const DEPARTURE_RELOAD_DELAY_MS = 5000;
+
 /* ── Production kiosk ─────────────────────────────────────────────────────── */
 
 function ProductionKiosk({ avatarMode }: { avatarMode: AvatarMode }) {
@@ -50,6 +52,14 @@ function ProductionKiosk({ avatarMode }: { avatarMode: AvatarMode }) {
   const cv = useCvSignals();
   const [started, setStarted] = useState(false);
   const sessionIdRef = useRef("");
+  const hasSeenFaceRef = useRef(false);
+  const reloadStartedRef = useRef(false);
+  const departureTimerRef = useRef<number | null>(null);
+  const sessionStateRef = useRef(cv.sessionState);
+  const disconnectSession = session.disconnect;
+  const stopWebcam = webcam.stop;
+  const stopCv = cv.stop;
+  const { presenceState, sessionState } = cv;
 
   const thinking = useThinkingHint(session.userText, session.assistantSpeaking);
 
@@ -68,6 +78,60 @@ function ProductionKiosk({ avatarMode }: { avatarMode: AvatarMode }) {
     cv.stop();
     setStarted(false);
   }, [session, webcam, cv]);
+
+  useEffect(() => {
+    sessionStateRef.current = sessionState;
+  }, [sessionState]);
+
+  useEffect(() => {
+    if (!started) {
+      hasSeenFaceRef.current = false;
+      reloadStartedRef.current = false;
+      return;
+    }
+
+    if (presenceState === "present") {
+      hasSeenFaceRef.current = true;
+      return;
+    }
+
+    if (
+      !hasSeenFaceRef.current ||
+      presenceState !== "absent" ||
+      reloadStartedRef.current
+    ) {
+      return;
+    }
+
+    departureTimerRef.current = window.setTimeout(() => {
+      departureTimerRef.current = null;
+      if (
+        reloadStartedRef.current ||
+        sessionStateRef.current !== "IDLE"
+      ) {
+        return;
+      }
+
+      reloadStartedRef.current = true;
+      disconnectSession();
+      stopWebcam();
+      stopCv();
+      window.location.reload();
+    }, DEPARTURE_RELOAD_DELAY_MS);
+
+    return () => {
+      if (departureTimerRef.current !== null) {
+        window.clearTimeout(departureTimerRef.current);
+        departureTimerRef.current = null;
+      }
+    };
+  }, [
+    started,
+    presenceState,
+    disconnectSession,
+    stopWebcam,
+    stopCv,
+  ]);
 
   const amplitude = useMemo(
     () => createAnalyserAmplitude(session.outputAnalyserRef),

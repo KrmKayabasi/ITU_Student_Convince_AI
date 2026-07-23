@@ -194,6 +194,7 @@ tts.synthesize(full_text)  ← ONE CALL, full context
 | `/stream/{session_id}` | Client → Server | WebSocket (binary JPEG) | Ingests webcam frames |
 | `/profile/{session_id}` | Server → Client | WebSocket (JSON) | One-shot rich behavioral profile |
 | `/focus/{session_id}` | Server → Client | WebSocket (JSON) | Periodic focus metrics (~2.5s) |
+| `/tracking/{session_id}` | Server → Client | WebSocket (JSON) | Face presence, CV state, and normalized face position (~0.2s) |
 | `/debug/{session_id}` | Server → Client | WebSocket (JSON) | Raw debug data (~0.3s, dev only) |
 | `/health` | — | HTTP GET | Liveness/readiness probe |
 
@@ -278,6 +279,12 @@ IDLE ──(face detected)──→ CALIBRATING ──(3s elapsed)──→ ACTI
 - **IDLE**: No person in frame
 - **CALIBRATING**: New person detected, collecting lean baseline samples
 - **ACTIVE**: Normal analysis — ring buffers active, focus tracking, profile trigger armed
+
+### Visitor Departure Reset
+
+The backend moves the CV state to `IDLE` after `NO_FACE_TIMEOUT_SECONDS` (2 seconds by default). This state transition does not itself clear the browser's Gemini session.
+
+After the frontend has observed a face, it independently requires 5 continuous seconds of `presence_state="absent"`. A `present` or `unknown` update cancels the timer, so brief detection misses, a turned face with a visible body, stale frames, and tracking-socket interruptions do not reset the kiosk. When the timer expires, the frontend also requires CV state `IDLE`, closes the realtime, webcam, and CV connections, and calls `window.location.reload()` to clear all client and conversation context. Initial absence before any face is observed is ignored.
 
 ---
 
