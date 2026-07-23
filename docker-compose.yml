@@ -17,6 +17,10 @@ services:
     build:
       context: ./
       dockerfile: Dockerfile
+    environment:
+      # Set to "true" to skip MediaPipe inference and return a synthetic
+      # "person present, focused" signal for downstream testing.
+      - MOCK_FOCUS=${MOCK_FOCUS:-false}
     ports:
       - "8000:8000"
     restart: unless-stopped

@@ -134,6 +134,16 @@ class SignalExtractor:
 
     def __init__(self, session_id: str) -> None:
         self.session_id = session_id
+        # When mock focus is enabled, don't load MediaPipe models at all —
+        # we'll return synthetic signals directly from extract().
+        if config.MOCK_FOCUS:
+            self._face = None
+            self._pose = None
+            self._emotion_worker = None
+            self._timestamp_counter = 0
+            self._previous_face_center = None
+            return
+
         self._face = FaceLandmarkerWrapper()
         self._pose = PoseLandmarkerWrapper()
         self._emotion_worker = EmotionWorker(session_id)
@@ -153,6 +163,32 @@ class SignalExtractor:
 
     def extract(self, frame: Optional[np.ndarray]) -> RawSignals:
         observation_ts = time.time()
+
+        # ── Mock focus mode ──────────────────────────────────────────────
+        # When MOCK_FOCUS is enabled, skip all MediaPipe inference and return
+        # a synthetic "person present, face centered, focused" signal.  This
+        # lets the orchestrator, Live2D rig, and barge-in logic operate as if
+        # a real person were in front of the camera — useful while the face
+        # detection pipeline is not yet production-ready.
+        if config.MOCK_FOCUS:
+            return RawSignals(
+                face_present=True,
+                person_present=True,
+                face_center_x=0.5,
+                face_center_y=0.45,
+                face_bbox_width=0.15,
+                face_bbox_height=0.20,
+                observation_ts=observation_ts,
+                eye_contact=0.9,
+                head_yaw_deg=0.0,
+                lean=0.0,
+                spine_ratio=0.92,
+                shoulder_tilt=0.0,
+                arms_crossed=False,
+                emotion_label="neutral",
+                emotion_scores={"neutral": 0.85},
+            )
+
         if frame is None or frame.size == 0:
             return RawSignals(face_present=False, observation_ts=observation_ts)
 
@@ -208,6 +244,9 @@ class SignalExtractor:
         )
 
     def close(self) -> None:
-        self._face.close()
-        self._pose.close()
-        self._emotion_worker.stop()
+        if self._face is not None:
+            self._face.close()
+        if self._pose is not None:
+            self._pose.close()
+        if self._emotion_worker is not None:
+            self._emotion_worker.stop()

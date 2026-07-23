@@ -88,3 +88,10 @@ EMOTION_INFER_HZ = _float("EMOTION_INFER_HZ", 1.0)
 # Yuz bbox'i kirpilirken her yonde eklenen normalize dolgu (kafanin tamamini
 # kadraja almak icin, ONNX modeli tüm yüzü görmek ister).
 FACE_CROP_PADDING_RATIO = _float("FACE_CROP_PADDING_RATIO", 0.25)
+
+# --- Mock / test modu ---------------------------------------------------------
+# Gerçek MediaPipe modellerini yüklemeden, sabit "odaklanmış kişi var" sinyali
+# döndürür. Face tracking henüz production-ready olmadığında sistemin geri
+# kalanının (orchestrator, Live2D rig, barge-in) test edilebilmesi içindir.
+# true yapınca: face_present=true, eye_contact=0.9, face merkezde.
+MOCK_FOCUS = os.environ.get("MOCK_FOCUS", "false").strip().lower() in {"1", "true", "yes", "on"}

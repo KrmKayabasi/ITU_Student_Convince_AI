@@ -52,6 +52,14 @@ echo "GOOGLE_API_KEY=your_key_here" > .env
 docker compose up --build
 ```
 
+**Skip MediaPipe (face detection):** The CV pipeline's face tracker isn't production-ready yet. Run with a mock signal so the avatar still reacts and the orchestrator works normally:
+
+```bash
+MOCK_FOCUS=true docker compose up --build
+```
+
+This skips MediaPipe model loading entirely and reports a synthetic "person present, focused" signal on `/tracking` and `/focus`.
+
 The first build takes **5–10 minutes** (CV installs OpenCV/MediaPipe, frontend does a full Next.js build). Subsequent starts are fast due to caching.
 
 Watch the logs for these ready signals:
@@ -179,13 +187,24 @@ Open four terminal tabs, all from the repo root. The order matters — start CV 
 ```bash
 source .venv/bin/activate
 export MODELS_DIR="$(pwd)/models"
+
+# Production (real MediaPipe face/pose/gaze):
 uvicorn backend.cv_pipeline.main:app --host 0.0.0.0 --port 8000
+
+# OR: mock mode — skips MediaPipe, reports "person present, focused"
+MOCK_FOCUS=true uvicorn backend.cv_pipeline.main:app --host 0.0.0.0 --port 8000
 ```
 
 **Windows (PowerShell):**
 ```powershell
 .venv\Scripts\Activate.ps1
 $env:MODELS_DIR = "$(Get-Location)\models"
+
+# Production:
+uvicorn backend.cv_pipeline.main:app --host 0.0.0.0 --port 8000
+
+# OR: mock mode
+$env:MOCK_FOCUS = "true"
 uvicorn backend.cv_pipeline.main:app --host 0.0.0.0 --port 8000
 ```
 
@@ -367,6 +386,9 @@ Docker Compose auto-loads `.env` from the repo root. When using venvs, `export` 
 | `ORCH_TOKEN` | *(empty)* | Optional bearer token to protect the orchestrator WS |
 | `CV_PIPELINE_WS_URL` | `ws://localhost:8000` | CV pipeline WebSocket address |
 | `MODELS_DIR` | `models` | Path to MediaPipe/ONNX model files |
+| `MOCK_FOCUS` | `false` | Skip MediaPipe inference, return synthetic "focused" signal |
+| `SPEAKER_ENABLED` | `true` | TitaNet-Small speaker verification & enrollment |
+| `SPEAKER_BARGEIN_ENABLED` | `true` | Speaker-aware barge-in (target speaker ignored during AI playback) |
 
 ---
 
@@ -377,7 +399,12 @@ For hacking on the orchestrator or frontend without rebuilding Docker on every c
 ```bash
 # Terminal 1 — CV pipeline (:8000)
 source .venv/bin/activate && export MODELS_DIR="$(pwd)/models"
+
+# Production (real MediaPipe):
 uvicorn backend.cv_pipeline.main:app --host 0.0.0.0 --port 8000
+
+# OR mock mode (no MediaPipe, synthetic "focused" signal):
+MOCK_FOCUS=true uvicorn backend.cv_pipeline.main:app --host 0.0.0.0 --port 8000
 
 # Terminal 2 — orchestrator (:8001)
 source .venv/bin/activate && export GOOGLE_API_KEY=your_key_here
