@@ -368,6 +368,8 @@ BROWSER KIOSK (Next.js, frontend/src/app/kiosk)     sessionId = crypto.randomUUI
 
 Data flow for lip-sync: **Gemini audio (24 kHz PCM16) → playback AudioWorklet → AnalyserNode (RMS) → `AmplitudeSource` → Live2D `ParamMouthOpenY`**. The avatar's mouth moves with the assistant's actual voice.
 
+Visitor departure handling: after a face has been observed, the kiosk starts a 5-second timer when tracking reports `absent`. Returning to frame or an `unknown` tracking state cancels the timer. If absence remains continuous and the CV session has reached `IDLE`, the frontend closes the realtime, webcam, and CV connections, then hard-reloads the page to clear conversation context for the next visitor. Starting with an empty frame does not trigger a reload.
+
 Full details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · [backend/orchestrator/README.md](backend/orchestrator/README.md) · UI spec: [docs/UI_DESIGN.md](docs/UI_DESIGN.md).
 
 ---

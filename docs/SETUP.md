@@ -220,7 +220,7 @@ export SUPERTONIC_SPEED="1.1"
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `CALIBRATION_SECONDS` | `3.0` | Baseline calibration duration |
-| `NO_FACE_TIMEOUT_SECONDS` | `2.0` | Time before IDLE when no face |
+| `NO_FACE_TIMEOUT_SECONDS` | `2.0` | Backend time before CV enters IDLE; the kiosk reload separately requires 5 continuous seconds of confirmed absence |
 | `SESSION_GC_TIMEOUT_SECONDS` | `120.0` | Stale session cleanup |
 | `PROFILE_MIN_SAMPLES` | `30` | Eye contact samples before profile generation |
 | `FOCUS_EMIT_INTERVAL_SECONDS` | `2.5` | Focus push interval |
