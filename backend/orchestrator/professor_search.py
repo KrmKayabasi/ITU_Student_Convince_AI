@@ -86,63 +86,94 @@ class ItuProfessorSearch:
         self.timeout_s = timeout_s
         self.max_results = max_results
 
-    async def search(self, topic: str, department: str = "") -> dict[str, Any]:
+    async def search(
+        self, topic: str, department: str = "", related_terms: list[str] | None = None
+    ) -> dict[str, Any]:
         topic = re.sub(r"\s+", " ", (topic or "").strip())[:120]
         department = re.sub(r"\s+", " ", (department or "").strip())[:120]
         if len(topic) < 2:
             raise ValueError("Arama konusu en az iki karakter olmalı")
 
-        source_url = f"{AKADEMI_BASE_URL}/search-person?st={quote_plus(topic)}"
+        # Collect all search terms (main topic + related), deduplicate.
+        all_terms: list[str] = [topic]
+        for rt in (related_terms or []):
+            rt_clean = re.sub(r"\s+", " ", (rt or "").strip())[:120]
+            if rt_clean and rt_clean.casefold() != topic.casefold() and rt_clean not in all_terms:
+                all_terms.append(rt_clean)
+
+        department_folded = department.casefold()
+        seen_urls: set[str] = set()
+        merged: list[dict[str, str]] = []
+
         headers = {"User-Agent": "ITU-Student-Convince-AI/1.0 (+official kiosk search)"}
         timeout = httpx.Timeout(self.timeout_s)
+
         async with httpx.AsyncClient(
             timeout=timeout, follow_redirects=True, headers=headers
         ) as client:
-            response = await client.get(source_url)
-            response.raise_for_status()
-            candidates = parse_search_people(response.text)
+            # Run all term searches in parallel, each returning enriched candidates.
+            async def _search_one(term: str) -> list[dict[str, str]]:
+                source_url = f"{AKADEMI_BASE_URL}/search-person?st={quote_plus(term)}"
+                response = await client.get(source_url)
+                response.raise_for_status()
+                candidates = parse_search_people(response.text)
 
-            # Prefer faculty who can supervise students, while retaining the
-            # official search ordering within each rank group.
-            candidates = [
-                person
-                for person in candidates
-                if any(
-                    marker in person["title"].casefold()
-                    for marker in _FACULTY_TITLES
+                # Prefer faculty who can supervise students.
+                candidates = [
+                    p for p in candidates
+                    if any(marker in p["title"].casefold() for marker in _FACULTY_TITLES)
+                ][: max(self.max_results * 2, 8)]
+
+                profiles = await asyncio.gather(
+                    *(self._enrich(client, person) for person in candidates),
+                    return_exceptions=True,
                 )
-            ][: max(self.max_results * 2, 8)]
-            profiles = await asyncio.gather(
-                *(self._enrich(client, person) for person in candidates),
-                return_exceptions=True,
+
+                enriched: list[dict[str, str]] = []
+                for person, profile in zip(candidates, profiles):
+                    entry = dict(person)
+                    if isinstance(profile, dict):
+                        entry.update(profile)
+                    else:
+                        entry.update({"department": "", "work_areas": "", "summary": ""})
+                    if department_folded and department_folded not in (
+                        entry.get("department", "").casefold()
+                    ):
+                        continue
+                    entry.pop("slug", None)
+                    enriched.append(entry)
+                return enriched
+
+            results_per_term = await asyncio.gather(
+                *(_search_one(t) for t in all_terms), return_exceptions=True
             )
 
-        enriched_candidates: list[dict[str, str]] = []
-        department_folded = department.casefold()
-        for person, profile in zip(candidates, profiles):
-            enriched = dict(person)
-            if isinstance(profile, dict):
-                enriched.update(profile)
-            else:
-                enriched.update({"department": "", "work_areas": "", "summary": ""})
-            if department_folded and department_folded not in (
-                enriched.get("department", "").casefold()
-            ):
+        # Merge: deduplicate by profile_url, keep first occurrence (main topic wins).
+        for candidates in results_per_term:
+            if not isinstance(candidates, list):
                 continue
-            enriched.pop("slug", None)
-            enriched_candidates.append(enriched)
+            for person in candidates:
+                url = person.get("profile_url", "")
+                if url and url not in seen_urls:
+                    seen_urls.add(url)
+                    merged.append(person)
 
-        # Profiles with explicit official research areas are more useful than
-        # sparse records while preserving Akademi's ordering otherwise.
-        enriched_candidates.sort(key=lambda person: not bool(person["work_areas"]))
-        results = enriched_candidates[: self.max_results]
+        # Profiles with explicit research areas sort first; otherwise preserve order.
+        merged.sort(key=lambda p: not bool(p.get("work_areas", "")))
+        results = merged[: self.max_results]
+
+        # Build a query description that includes related terms for the frontend.
+        query_desc = topic
+        if len(all_terms) > 1:
+            query_desc = f"{topic} (+ {', '.join(all_terms[1:])})"
 
         return {
             "query": topic,
+            "related_terms": all_terms[1:],
             "department_filter": department,
             "results": results,
             "source_name": "İTÜ Akademi",
-            "source_url": source_url,
+            "source_url": f"{AKADEMI_BASE_URL}/search-person?st={quote_plus(topic)}",
         }
 
     async def _enrich(

@@ -125,8 +125,22 @@ class GeminiLiveBridge:
                             name="search_itu_professors",
                             description=(
                                 "Search official İTÜ Akademi pages for faculty "
-                                "whose research matches a student's topic. Use a "
-                                "short Turkish research keyword or phrase."
+                                "whose research matches a student's topic. "
+                                "ALWAYS ask the student which faculty or department "
+                                "they are interested in first (e.g. Elektrik-Elektronik "
+                                "vs Bilgisayar for biomedical — same topic, very "
+                                "different research angles). Pass their answer as the "
+                                "department parameter. If the student has no faculty "
+                                "preference after you have explicitly asked, then omit "
+                                "the department to get a general list. "
+                                "Use a short Turkish research keyword or phrase for "
+                                "the topic. "
+                                "Also provide 1–2 semantically related Turkish search "
+                                "terms (synonyms, broader/narrower concepts, alternate "
+                                "phrasings) as related_terms so the search covers "
+                                "different ways professors may describe the same "
+                                "research area (e.g. 'doğal dil işleme' and 'dil "
+                                "işleyici' for NLP)."
                             ),
                             parameters_json_schema={
                                 "type": "object",
@@ -138,10 +152,27 @@ class GeminiLiveBridge:
                                             "Turkish term used by İTÜ Akademi"
                                         ),
                                     },
+                                    "related_terms": {
+                                        "type": "array",
+                                        "items": {"type": "string"},
+                                        "description": (
+                                            "1–2 semantically related Turkish search "
+                                            "terms — synonyms, alternate phrasings, or "
+                                            "closely related sub-topics that professors "
+                                            "might use on their profiles instead of the "
+                                            "main topic. E.g. for 'doğal dil işleme' "
+                                            "include 'dil işleyici' or 'metin "
+                                            "madenciliği'."
+                                        ),
+                                    },
                                     "department": {
                                         "type": "string",
                                         "description": (
-                                            "Optional İTÜ faculty or department filter"
+                                            "The İTÜ faculty or department the student "
+                                            "prefers (e.g. 'Bilgisayar Mühendisliği', "
+                                            "'Elektrik-Elektronik Fakültesi'). "
+                                            "Always ask the student — omit this only if "
+                                            "they say they have no preference."
                                         ),
                                     },
                                 },

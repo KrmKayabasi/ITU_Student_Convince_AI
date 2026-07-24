@@ -165,6 +165,10 @@ class CvInjector:
         if not self._opened:
             return
 
+        # Feature flag: when disabled, track distraction state but never fire.
+        if not config.REENGAGE_ENABLED:
+            return
+
         if self._distracted_since is None:
             self._distracted_since = now
             return

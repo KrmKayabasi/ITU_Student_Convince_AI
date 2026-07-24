@@ -279,6 +279,70 @@
   color: var(--k-ink);
 }
 
+/* ── QR code collapsed view ─────────────────────────────────────────────── */
+
+.k-professor-panel--qr {
+  width: min(18rem, calc(100vw - 3rem));
+  padding: 1.25rem 1rem 1rem;
+}
+
+.k-professor-qr-close {
+  position: absolute;
+  top: 0.55rem;
+  right: 0.55rem;
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  place-items: center;
+  border: 0;
+  border-radius: 0.6rem;
+  background: rgba(148, 163, 189, 0.1);
+  color: var(--k-ink-dim);
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+
+.k-professor-qr-close:hover {
+  color: var(--k-ink);
+  background: rgba(148, 163, 189, 0.18);
+}
+
+.k-professor-qr-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.45rem;
+  text-align: center;
+  color: var(--k-amber-soft);
+}
+
+.k-professor-qr-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 750;
+  color: var(--k-ink);
+}
+
+.k-professor-qr-hint {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--k-ink-dim);
+}
+
+.k-professor-qr-image {
+  display: block;
+  margin: 0.25rem 0;
+  border-radius: 0.85rem;
+  border: 2px solid rgba(148, 163, 189, 0.15);
+  background: #fff;
+}
+
+.k-professor-qr-query {
+  margin: 0;
+  font-size: 0.7rem;
+  color: var(--k-ink-dim);
+}
+
 @media (max-width: 760px) {
   .k-professor-panel {
     top: auto;

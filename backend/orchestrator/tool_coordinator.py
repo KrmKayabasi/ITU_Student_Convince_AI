@@ -49,6 +49,11 @@ class ToolCoordinator:
         args = call.get("args") if isinstance(call.get("args"), dict) else {}
         topic = str(args.get("topic") or "").strip()
         department = str(args.get("department") or "").strip()
+        related_terms: list[str] = (
+            [str(t).strip() for t in args["related_terms"] if str(t).strip()]
+            if isinstance(args.get("related_terms"), list)
+            else []
+        )
         await self.send_json(
             {
                 "type": "tool_activity",
@@ -61,7 +66,9 @@ class ToolCoordinator:
         try:
             if name != "search_itu_professors":
                 raise ValueError(f"Unsupported tool: {name}")
-            result = await self.professor_search.search(topic, department)
+            result = await self.professor_search.search(
+                topic, department, related_terms
+            )
             await self.send_json({"type": "tool_result", "id": call_id, **result})
             await self.bridge.send_tool_response(
                 call_id=call_id, name=name, response=result

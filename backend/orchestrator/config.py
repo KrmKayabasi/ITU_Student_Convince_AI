@@ -70,6 +70,10 @@ CV_PIPELINE_TOKEN = _str("CV_PIPELINE_TOKEN", "")
 # Focus-steering behaviour.
 FOCUS_LOSS_SECONDS = _float("FOCUS_LOSS_SECONDS", 5.0)       # sustained !focused before a nudge
 NUDGE_COOLDOWN_SECONDS = _float("NUDGE_COOLDOWN_SECONDS", 20.0)  # min gap between nudges
+# Set to "true" to enable the attention re-engage nudge when the student
+# looks away. Off by default — the avatar still shows "concerned" face state
+# visually, but no voice steer or seekAttention burst fires.
+REENGAGE_ENABLED = _bool("REENGAGE_ENABLED", False)
 # How long to wait for the one-shot /profile before opening with a generic greeting.
 PROFILE_WAIT_SECONDS = _float("PROFILE_WAIT_SECONDS", 3.0)
 
